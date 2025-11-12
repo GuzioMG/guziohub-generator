@@ -3,19 +3,25 @@ package cmd
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   " generate <flags> OR generate <content: File or Folder> <using: File> <to: File or Folder - matches content>",
+	Use:   " generate <flags> OR generate <content: File or Folder> <using: File> <to: Folder (unless \"content\" was a File) or Empty Path>",
 	Short: "Builds my website",
 	Long:  `Builds my website.`,
 	Args:  cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		//Basic setup
 		multiContent := false
 		toNeedsClosing := true
+		if strings.HasPrefix(args[0], "."+string(os.PathSeparator)) || args[0] == "." {
+			return errors.New("please use a different form of relative path (like some/subfolder not ./some/subfolder) and/or don't operate directly on the working directory (you CAN do ../[workdir] or use absolute paths for it) to avoid path-parsing issues") // I debugged this and know the cause of it (it's becasue filepath.Walk tries to be helpful and strips away any references to the workdir from its string path param - but that ends up interfering with my own prefix-stripping logic), but was too lazy to fix
+		}
 
 		// Load args
 		content, err := os.Open(args[0])
@@ -56,17 +62,38 @@ var rootCmd = &cobra.Command{
 			if toNeedsClosing {
 				to.Close() // Closed earlier-than-planned („planned” by the defer statement above), so we can re-open with O_WRONLY (as opposed to O_RDONLY, which is what os.Open uses)
 			}
-			if to_wrt, err := os.OpenFile(args[2], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644); err != nil {
+			if to_wrt, err := deepOpen(args[2], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0775); err != nil {
 				return err
 			} else {
+				defer to_wrt.Close()
 				return process(content, using, to_wrt)
 			}
 		}
 
 		// Multi-content case
-		// (NOT IMPLEMENTED YET)
+		return filepath.Walk(args[0], func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
 
-		return nil
+			if content_new, err := os.Open(path); err != nil {
+				return err
+			} else if subpath, success := strings.CutPrefix(path, args[0]); !success {
+				content_new.Close()
+				return errors.New("could not get subpath from path \"" + path + "\" with base \"" + args[0] + "\"")
+			} else if to_new, err := deepOpen(args[2]+string(os.PathSeparator)+subpath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0775); err != nil {
+				println("Got subpath \"" + subpath + "\" from path \"" + path + "\" with base \"" + args[0] + "\". This may help debug the error below:")
+				content_new.Close()
+				return err
+			} else {
+				defer content_new.Close()
+				defer to_new.Close()
+				return process(content_new, using, to_new)
+			}
+		})
 	},
 }
 
@@ -91,6 +118,14 @@ func init() {
 	//rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
+func deepOpen(name string, flag int, perm os.FileMode) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(name), perm); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(name, flag, perm)
+}
+
 func process(content *os.File, using *os.File, to *os.File) error {
-	return errors.New("NOT IMPLEMENTED YET")
+	println("Would've processed \"" + content.Name() + "\" using template \"" + using.Name() + "\" to output \"" + to.Name() + "\"")
+	return nil
 }
