@@ -13,7 +13,7 @@
 		"ghcr.io/nikobockerman/devcontainer-features/fish-persistent-data:2": {},
 		"ghcr.io/devcontainers-extra/features/fish-apt-get:1": {},
 		"ghcr.io/azutake/devcontainer-features/go-packages-install:0": {
-			"PACKAGES": "github.com/spf13/cobra-cli@latest,github.com/spf13/cobra@latest"
+			"PACKAGES": "github.com/spf13/cobra-cli@latest"
 		}
 	}
 	// "forwardPorts": [],
