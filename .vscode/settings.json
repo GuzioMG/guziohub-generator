@@ -6,7 +6,9 @@
 		"goreleaser",
 		"gotestsum",
 		"guiyomh",
+		"guzio",
 		"guziohub",
-		"nikobockerman"
+		"nikobockerman",
+		"termtxt"
 	]
 }

@@ -149,8 +149,7 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 	} else {
 		contentBytes := make([]byte, contentInfo.Size())
 		if len, err := content.Read(contentBytes); err != nil {
-			println("Read \"" + fmt.Sprint(len) + "\" bytes from file \"" + content.Name() + "\" (contents: ```html\n" + string(contentBytes) + "\n```), but then got the error below:")
-			return err
+			return errors.Join(err, errors.New(("read \"" + fmt.Sprint(len) + "\" bytes from file \"" + content.Name() + "\" (contents of those bytes: ```html\n" + string(contentBytes) + "\n```), but then got the error above")))
 		} else {
 			contentContent := string(contentBytes)
 			meaningfulLines = strings.Count(contentContent, "\n") - 2 // Less by 3 over real count to account for the opening, closing and DOCTYPE tags. Subtracting only 2 because Count counts the number of \n, which is always one less than the number of lines.
@@ -164,6 +163,8 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 	// Processing content
 	parsedLines := make([]util.LineData, meaningfulLines)
 	var extractedMetadata *util.DocumentData = nil
+	overallTypedLength := 0
+	overallBytesLength := 0
 	for index, line := range strings.Split(*contentText, "\n") {
 
 		// Skip non-meaningful lines
@@ -171,17 +172,17 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 			//...Unless they're invalid
 			if index == 0 && !(strings.HasPrefix(line, "<!DOCTYPE ghtml-v0.") && strings.Contains(line, " \"") && strings.HasSuffix(line, "\">")) {
 				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid G-HTML v0 file (missing, wrong-versioned, or invalid DOCTYPE declaration - found \"" + line + "\" on line #1 instead)")
-			} else if index == 1 && !(strings.HasPrefix(line, "<html flavour=\"ghtml\" lang=\"") && strings.Contains(line, "\" canonical=\"") && strings.Contains(line, "\" title=\"") && strings.Contains(line, "\" description=\"") && strings.HasSuffix(line, "\">")) {
+			} else if index == 1 && !(strings.HasPrefix(line, "<html flavour=\"ghtml\" lang=\"") && strings.Contains(line, "\" canonical=\"") && strings.Contains(line, "\" title=\"") && strings.Contains(line, "\" header=\"") && strings.Contains(line, "\" description=\"") && strings.HasSuffix(line, "\">")) {
 				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of G-HTML flavour (missing, mis(s)-attributed, or invalid opening <html> tag - found \"" + line + "\" on line #2 instead)")
 			} else if index == meaningfulLines+2 && line != "</html>" {
 				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of any (G-HTML, or otherwise) flavour (missing or invalid closing </html> tag - found \"" + line + "\" on line #" + fmt.Sprint(index+1) + " (the last one) instead)")
 			}
 
 			//.....Or it happens to be line #2, which - although non-meaningful, as far as content goes - contains metadata we need to extract
-			if index == 1 {
-				println("Would've extracted metadata from: " + line)
-				extractedMetadata = &util.DocumentData{} //TODO: Implement
-				strings.Clone(extractedMetadata.Lang)    //no-op to avoid "declared and not used" error
+			if data, err := util.ExtractMetadata(line, content.Name()); index == 1 && err != nil {
+				return err
+			} else if index == 1 {
+				extractedMetadata = data
 			}
 
 			//................And only THEN skip!
@@ -189,15 +190,36 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 		}
 
 		// Process meaningful lines
-		println("Would've processed: " + line)
-		parsedLines[index-2] = util.LineData{
-			//TODO: Implement
-			Length:           len(line),
-			ProcessedContent: line,
+		if processed, err := util.ProcessLine(line, "            ", content.Name(), index+1); err != nil { //TODO: Guess indentation from template
+			return err
+		} else {
+			parsedLines[index-2] = *processed
+			overallTypedLength += processed.TypedLength
+			overallBytesLength += processed.BytesLength
 		}
 	}
 
-	// TODO: Generate CSS from processed lines, combine parsed content lines, inject them+css+metadata into template, and write it to the "to" file
+	// Combine and insert parsed content lines
+	var parsedLinesCombined strings.Builder
+	parsedLinesCombined.Grow(overallBytesLength)
+	for _, line := range parsedLines {
+		parsedLinesCombined.WriteString(line.ProcessedContent)
+	}
+	toOutput := strings.ReplaceAll(*template.Content, "<p class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page content is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</p>", parsedLinesCombined.String())
+
+	//TODO: CSS generation and insertion
+
+	// Insert metadata
+	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_LANG}}", extractedMetadata.Lang)
+	toOutput = strings.ReplaceAll(toOutput, "{{CANONICAL_URL}}", extractedMetadata.Canonical)
+	toOutput = strings.ReplaceAll(toOutput, "[PAGE TITLE - FILE AN ISSUE IF MISSING]", extractedMetadata.Title)
+	toOutput = strings.ReplaceAll(toOutput, "<h1 class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page title is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</h1>", extractedMetadata.Header)
+	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_DESCRIPTION}}", extractedMetadata.Description)
+
+	// Write output
+	if lenWr, err := to.Write([]byte(toOutput)); err != nil {
+		return errors.Join(err, errors.New(("written \"" + fmt.Sprint(lenWr) + "\" bytes to file \"" + to.Name() + "\", but before the whole " + fmt.Sprint(len(([]byte(toOutput)))) + "-byte long content of ```html\n" + toOutput + "\n``` could be written, got the error above")))
+	}
 
 	return nil
 }

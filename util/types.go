@@ -6,7 +6,8 @@ type TemplateData struct {
 }
 
 type LineData struct {
-	Length           int
+	TypedLength      int
+	BytesLength      int
 	ProcessedContent string
 }
 
@@ -14,5 +15,6 @@ type DocumentData struct {
 	Lang        string
 	Canonical   string
 	Title       string
+	Header      string
 	Description string
 }
