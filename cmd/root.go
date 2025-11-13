@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,6 +164,7 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 	// Processing content
 	parsedLines := make([]util.LineData, meaningfulLines)
 	var extractedMetadata *util.DocumentData = nil
+	maxTypedLength := 0
 	overallTypedLength := 0
 	overallBytesLength := 0
 	for index, line := range strings.Split(*contentText, "\n") {
@@ -171,29 +173,28 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 		if index == 0 || index == 1 || index == meaningfulLines+2 {
 			//...Unless they're invalid
 			if index == 0 && !(strings.HasPrefix(line, "<!DOCTYPE ghtml-v0.") && strings.Contains(line, " \"") && strings.HasSuffix(line, "\">")) {
-				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid G-HTML v0 file (missing, wrong-versioned, or invalid DOCTYPE declaration - found \"" + line + "\" on line #1 instead)")
-			} else if index == 1 && !(strings.HasPrefix(line, "<html flavour=\"ghtml\" lang=\"") && strings.Contains(line, "\" canonical=\"") && strings.Contains(line, "\" title=\"") && strings.Contains(line, "\" header=\"") && strings.Contains(line, "\" description=\"") && strings.HasSuffix(line, "\">")) {
-				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of G-HTML flavour (missing, mis(s)-attributed, or invalid opening <html> tag - found \"" + line + "\" on line #2 instead)")
-			} else if index == meaningfulLines+2 && line != "</html>" {
-				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of any (G-HTML, or otherwise) flavour (missing or invalid closing </html> tag - found \"" + line + "\" on line #" + fmt.Sprint(index+1) + " (the last one) instead)")
+				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid G-HTML v0 file (missing, wrong-versioned, or invalid DOCTYPE declaration - found \"" + line + "\" instead)")
 			}
 
-			//.....Or it happens to be line #2, which - although non-meaningful, as far as content goes - contains metadata we need to extract
 			if data, err := util.ExtractMetadata(line, content.Name()); index == 1 && err != nil {
 				return err
 			} else if index == 1 {
 				extractedMetadata = data
 			}
 
-			//................And only THEN skip!
+			if index == meaningfulLines+2 && line != "</html>" {
+				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of any (G-HTML, or otherwise) flavour (missing or invalid closing </html> tag - found \"" + line + "\" on line #" + fmt.Sprint(index+1) + " (the last one) instead)")
+			}
+
 			continue
 		}
 
 		// Process meaningful lines
-		if processed, err := util.ProcessLine(line, "            ", content.Name(), index+1); err != nil { //TODO: Guess indentation from template
+		if processed, err := util.ProcessLine(line, "            ", content.Name(), index+1); err != nil {
 			return err
 		} else {
 			parsedLines[index-2] = *processed
+			maxTypedLength = int(math.Max(float64(maxTypedLength), float64(processed.TypedLength)))
 			overallTypedLength += processed.TypedLength
 			overallBytesLength += processed.BytesLength
 		}
@@ -208,12 +209,13 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 	toOutput := strings.ReplaceAll(*template.Content, "<p class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page content is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</p>", parsedLinesCombined.String())
 
 	//TODO: CSS generation and insertion
+	println("Would've used lengths: " + fmt.Sprint(overallTypedLength, maxTypedLength))
 
 	// Insert metadata
 	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_LANG}}", extractedMetadata.Lang)
 	toOutput = strings.ReplaceAll(toOutput, "{{CANONICAL_URL}}", extractedMetadata.Canonical)
 	toOutput = strings.ReplaceAll(toOutput, "[PAGE TITLE - FILE AN ISSUE IF MISSING]", extractedMetadata.Title)
-	toOutput = strings.ReplaceAll(toOutput, "<h1 class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page title is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</h1>", extractedMetadata.Header)
+	toOutput = strings.ReplaceAll(toOutput, "<h1 class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page title is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</h1>", "<h1 class=\"termtxt-default\">"+extractedMetadata.Header+"</h1>")
 	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_DESCRIPTION}}", extractedMetadata.Description)
 
 	// Write output
