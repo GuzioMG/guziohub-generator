@@ -88,10 +88,11 @@ func ProcessLine(line string, indentation string, path string, lineNum int) (*Li
 	}
 
 	return &LineData{
-		TypedLength:      typedCharCount,
-		BytesLength:      len([]byte(returnedLine)),
-		ProcessedContent: returnedLine,
-		IsFirst:          isFirst,
-		WordCount:        len(strings.Split(typedLine, " ")),
+		TypedLength:              typedCharCount,
+		BytesLength:              len([]byte(returnedLine)),
+		ProcessedContent:         returnedLine,
+		IsFirst:                  isFirst,
+		WordCount:                len(strings.Split(typedLine, " ")),
+		TypedLengthWithoutSpaces: strings.Count(strings.ReplaceAll(typedLine, " ", ""), "") - 1,
 	}, errNonFatal
 }

@@ -197,7 +197,7 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 			parsedLines[index-2] = *processed
 			maxTypedLength = int(math.Max(float64(maxTypedLength), float64(processed.TypedLength)))
 			overallWordCount += processed.WordCount
-			overallTypedLength += processed.TypedLength
+			overallTypedLength += processed.TypedLengthWithoutSpaces
 			overallBytesLength += processed.BytesLength
 		}
 	}
@@ -210,8 +210,10 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 	}
 	toOutput := strings.ReplaceAll(*template.Content, "<p class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page content is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</p>", parsedLinesCombined.String())
 
-	//TODO: CSS generation and insertion
-	println("Would've used lengths: " + fmt.Sprint(overallTypedLength, maxTypedLength))
+	//CSS generation and insertion
+	wordsPerSecond := 240 / 60.0 // Average reading speed is 200-300 wpm and 240wpm divides nicely (I mean... So does 300, but 240 is also a good middle-ground)
+	charactersPerSecond := wordsPerSecond * (float64(overallTypedLength) / float64(overallWordCount))
+	println("Assuming CPS: " + fmt.Sprint(charactersPerSecond))
 
 	// Insert metadata
 	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_LANG}}", extractedMetadata.Lang)

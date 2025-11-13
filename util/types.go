@@ -6,11 +6,12 @@ type TemplateData struct {
 }
 
 type LineData struct {
-	TypedLength      int
-	BytesLength      int
-	ProcessedContent string
-	IsFirst          bool
-	WordCount        int
+	TypedLength              int
+	BytesLength              int
+	ProcessedContent         string
+	IsFirst                  bool
+	WordCount                int
+	TypedLengthWithoutSpaces int
 }
 
 type DocumentData struct {
