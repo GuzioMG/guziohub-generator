@@ -9,6 +9,8 @@ type LineData struct {
 	TypedLength      int
 	BytesLength      int
 	ProcessedContent string
+	IsFirst          bool
+	WordCount        int
 }
 
 type DocumentData struct {

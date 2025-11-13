@@ -165,6 +165,7 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 	parsedLines := make([]util.LineData, meaningfulLines)
 	var extractedMetadata *util.DocumentData = nil
 	maxTypedLength := 0
+	overallWordCount := 0
 	overallTypedLength := 0
 	overallBytesLength := 0
 	for index, line := range strings.Split(*contentText, "\n") {
@@ -195,6 +196,7 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 		} else {
 			parsedLines[index-2] = *processed
 			maxTypedLength = int(math.Max(float64(maxTypedLength), float64(processed.TypedLength)))
+			overallWordCount += processed.WordCount
 			overallTypedLength += processed.TypedLength
 			overallBytesLength += processed.BytesLength
 		}

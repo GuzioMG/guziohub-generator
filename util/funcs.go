@@ -70,10 +70,12 @@ func ProcessLine(line string, indentation string, path string, lineNum int) (*Li
 	typedCharCount := strings.Count(typedLine, "") - 1
 
 	//Processing content
+	isFirst := false
 	prefix := "\n" + indentation + "<br><p class=\"termtxt-default\">&nbsp;$&nbsp;</p><p class=\"termtxt-default typing-animator\">"
 	suffix := "</p><p class=\"termtxt-default typing-animator\">_</p>"
-	if lineNum == 3 { //3rd line is the 1st line of content
+	if lineNum == 3 {
 		prefix = strings.ReplaceAll(prefix, "<br>", "")
+		isFirst = true
 	} else {
 		prefix = strings.ReplaceAll(prefix, "&nbsp;$", "")
 	}
@@ -89,5 +91,7 @@ func ProcessLine(line string, indentation string, path string, lineNum int) (*Li
 		TypedLength:      typedCharCount,
 		BytesLength:      len([]byte(returnedLine)),
 		ProcessedContent: returnedLine,
+		IsFirst:          isFirst,
+		WordCount:        len(strings.Split(typedLine, " ")),
 	}, errNonFatal
 }
