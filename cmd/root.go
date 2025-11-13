@@ -172,7 +172,7 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 			if index == 0 && !(strings.HasPrefix(line, "<!DOCTYPE ghtml-v0.") && strings.Contains(line, " \"") && strings.HasSuffix(line, "\">")) {
 				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid G-HTML v0 file (missing, wrong-versioned, or invalid DOCTYPE declaration - found \"" + line + "\" on line #1 instead)")
 			} else if index == 1 && !(strings.HasPrefix(line, "<html flavour=\"ghtml\" lang=\"") && strings.Contains(line, "\" canonical=\"") && strings.Contains(line, "\" title=\"") && strings.Contains(line, "\" description=\"") && strings.HasSuffix(line, "\">")) {
-				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of G-HTML flavour (missing or invalid opening <html flavour=\"ghtml\"> tag - found \"" + line + "\" on line #2 instead)")
+				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of G-HTML flavour (missing, mis(s)-attributed, or invalid opening <html> tag - found \"" + line + "\" on line #2 instead)")
 			} else if index == meaningfulLines+2 && line != "</html>" {
 				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of any (G-HTML, or otherwise) flavour (missing or invalid closing </html> tag - found \"" + line + "\" on line #" + fmt.Sprint(index+1) + " (the last one) instead)")
 			}
