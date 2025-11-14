@@ -9,7 +9,7 @@ type LineData struct {
 	TypedLength              int
 	BytesLength              int
 	ProcessedContent         string
-	IsFirst                  bool
+	RealNum                  int
 	WordCount                int
 	TypedLengthWithoutSpaces int
 }

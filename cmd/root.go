@@ -202,27 +202,26 @@ func process(content *os.File, template util.TemplateData, to *os.File) error {
 		}
 	}
 
-	// Combine and insert parsed content lines
-	var parsedLinesCombined strings.Builder
-	parsedLinesCombined.Grow(overallBytesLength)
-	for _, line := range parsedLines {
-		parsedLinesCombined.WriteString(line.ProcessedContent)
-	}
-	toOutput := strings.ReplaceAll(*template.Content, "<p class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page content is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</p>", parsedLinesCombined.String())
-
-	//CSS generation and insertion
-	wordsPerSecond := 240 / 60.0 // Average reading speed is 200-300 wpm and 240wpm divides nicely (I mean... So does 300, but 240 is also a good middle-ground)
+	// Combine parsed content lines; generate and combine CSS
+	var parsedHTMLLinesCombined strings.Builder
+	parsedHTMLLinesCombined.Grow(overallBytesLength)
+	var parsedCSSLinesCombined strings.Builder
+	wordsPerSecond := 300 / 60.0 // Average reading speed is 200-300 wpm and - considering how other parts of the animation  will slow down the average CPS, anyway - going with the higher end of that spectrum is needed to avoid boring users to death.
 	charactersPerSecond := wordsPerSecond * (float64(overallTypedLength) / float64(overallWordCount))
-	println("Assuming CPS: " + fmt.Sprint(charactersPerSecond))
+	seconds := 0
+	for _, line := range parsedLines {
+		parsedHTMLLinesCombined.WriteString(line.ProcessedContent)
+		parsedCSSLinesCombined.WriteString(util.BuildCSSLine(line, &seconds, charactersPerSecond, maxTypedLength, meaningfulLines, "            ", "                "))
+	}
 
-	// Insert metadata
+	// Write output
+	toOutput := strings.ReplaceAll(*template.Content, "<p class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page content is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</p>", parsedHTMLLinesCombined.String())
+	toOutput = strings.ReplaceAll(toOutput, " /*Slot for auto-generated CSS*/", parsedCSSLinesCombined.String())
 	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_LANG}}", extractedMetadata.Lang)
 	toOutput = strings.ReplaceAll(toOutput, "{{CANONICAL_URL}}", extractedMetadata.Canonical)
 	toOutput = strings.ReplaceAll(toOutput, "[PAGE TITLE - FILE AN ISSUE IF MISSING]", extractedMetadata.Title)
 	toOutput = strings.ReplaceAll(toOutput, "<h1 class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page title is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</h1>", "<h1 class=\"termtxt-default\">"+extractedMetadata.Header+"</h1>")
 	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_DESCRIPTION}}", extractedMetadata.Description)
-
-	// Write output
 	if lenWr, err := to.Write([]byte(toOutput)); err != nil {
 		return errors.Join(err, errors.New(("written \"" + fmt.Sprint(lenWr) + "\" bytes to file \"" + to.Name() + "\", but before the whole " + fmt.Sprint(len(([]byte(toOutput)))) + "-byte long content of ```html\n" + toOutput + "\n``` could be written, got the error above")))
 	}
