@@ -130,3 +130,92 @@ func BuildCSSLine(line LineData, cumulativeSeconds *int, charactersPerSecond flo
 	*cumulativeSeconds += leftPadding + secondsForLine + rightPadding
 	return cssLine
 }
+
+func Process(content *os.File, template TemplateData, to *os.File) error {
+
+	// Loading content
+	var contentText *string = nil
+	meaningfulLines := 0
+	if contentInfo, err := content.Stat(); err != nil {
+		return err
+	} else {
+		contentBytes := make([]byte, contentInfo.Size())
+		if len, err := content.Read(contentBytes); err != nil {
+			return errors.Join(err, errors.New(("read \"" + fmt.Sprint(len) + "\" bytes from file \"" + content.Name() + "\" (contents of those bytes: ```html\n" + string(contentBytes) + "\n```), but then got the error above")))
+		} else {
+			contentContent := string(contentBytes)
+			meaningfulLines = strings.Count(contentContent, "\n") - 2 // Less by 3 over real count to account for the opening, closing and DOCTYPE tags. Subtracting only 2 because Count counts the number of \n, which is always one less than the number of lines.
+			if meaningfulLines <= 0 {
+				return errors.New("file \"" + content.Name() + "\" does not appear to have any content (got \"" + fmt.Sprint(meaningfulLines) + "\" meaningful lines, ie. after discounting the opening, closing and DOCTYPE tags)")
+			}
+			contentText = &contentContent
+		}
+	}
+
+	// Processing content
+	parsedLines := make([]LineData, meaningfulLines)
+	var extractedMetadata *DocumentData = nil
+	maxTypedLength := 0
+	overallWordCount := 0
+	overallTypedLength := 0
+	overallBytesLength := 0
+	for index, line := range strings.Split(*contentText, "\n") {
+
+		// Skip non-meaningful lines
+		if index == 0 || index == 1 || index == meaningfulLines+2 {
+			//...Unless they're invalid
+			if index == 0 && !(strings.HasPrefix(line, "<!DOCTYPE ghtml-v0.") && strings.Contains(line, " \"") && strings.HasSuffix(line, "\">")) {
+				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid G-HTML v0 file (missing, wrong-versioned, or invalid DOCTYPE declaration - found \"" + line + "\" instead)")
+			}
+
+			if data, err := ExtractMetadata(line, content.Name()); index == 1 && err != nil {
+				return err
+			} else if index == 1 {
+				extractedMetadata = data
+			}
+
+			if index == meaningfulLines+2 && line != "</html>" {
+				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid HTML file, of any (G-HTML, or otherwise) flavour (missing or invalid closing </html> tag - found \"" + line + "\" on line #" + fmt.Sprint(index+1) + " (the last one) instead)")
+			}
+
+			continue
+		}
+
+		// Process meaningful lines
+		if processed, err := ProcessLine(line, "            ", content.Name(), index+1); err != nil {
+			return err
+		} else {
+			parsedLines[index-2] = *processed
+			maxTypedLength = int(math.Max(float64(maxTypedLength), float64(processed.TypedLength)))
+			overallWordCount += processed.WordCount
+			overallTypedLength += processed.TypedLengthWithoutSpaces
+			overallBytesLength += processed.BytesLength
+		}
+	}
+
+	// Combine parsed content lines; generate and combine CSS
+	var parsedHTMLLinesCombined strings.Builder
+	parsedHTMLLinesCombined.Grow(overallBytesLength)
+	var parsedCSSLinesCombined strings.Builder
+	wordsPerSecond := 300 / 60.0 // Average reading speed is 200-300 wpm and - considering how other parts of the animation  will slow down the average CPS, anyway - going with the higher end of that spectrum is needed to avoid boring users to death.
+	charactersPerSecond := wordsPerSecond * (float64(overallTypedLength) / float64(overallWordCount))
+	seconds := 0
+	for _, line := range parsedLines {
+		parsedHTMLLinesCombined.WriteString(line.ProcessedContent)
+		parsedCSSLinesCombined.WriteString(BuildCSSLine(line, &seconds, charactersPerSecond, maxTypedLength, meaningfulLines, "            ", "                "))
+	}
+
+	// Write output
+	toOutput := strings.ReplaceAll(*template.Content, "<p class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page content is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</p>", parsedHTMLLinesCombined.String())
+	toOutput = strings.ReplaceAll(toOutput, " /*Slot for auto-generated CSS*/", parsedCSSLinesCombined.String())
+	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_LANG}}", extractedMetadata.Lang)
+	toOutput = strings.ReplaceAll(toOutput, "{{CANONICAL_URL}}", extractedMetadata.Canonical)
+	toOutput = strings.ReplaceAll(toOutput, "[PAGE TITLE - FILE AN ISSUE IF MISSING]", extractedMetadata.Title)
+	toOutput = strings.ReplaceAll(toOutput, "<h1 class=\"termtxt-warnings\">If you're reading this - something went very wrong. The page title is SUPPOSED to be here, but - clearly - it is not. Please file an issue at <a href=\"https://github.com/GuzioMG/guziohub\" class=\"termtxt-links custom-link-underlining\">https://github.com/GuzioMG/guziohub</a>.</h1>", "<h1 class=\"termtxt-default\">"+extractedMetadata.Header+"</h1>")
+	toOutput = strings.ReplaceAll(toOutput, "{{PAGE_DESCRIPTION}}", extractedMetadata.Description)
+	if lenWr, err := to.Write([]byte(toOutput)); err != nil {
+		return errors.Join(err, errors.New(("written \"" + fmt.Sprint(lenWr) + "\" bytes to file \"" + to.Name() + "\", but before the whole " + fmt.Sprint(len(([]byte(toOutput)))) + "-byte long content of ```html\n" + toOutput + "\n``` could be written, got the error above")))
+	}
+
+	return nil
+}
