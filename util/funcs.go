@@ -164,7 +164,7 @@ func Process(content *os.File, template TemplateData, to *os.File) error {
 		// Skip non-meaningful lines
 		if index == 0 || index == 1 || index == meaningfulLines+2 {
 			//...Unless they're invalid
-			if index == 0 && !(strings.HasPrefix(line, "<!DOCTYPE ghtml-v0.") && strings.Contains(line, " \"") && strings.HasSuffix(line, "\">")) {
+			if index == 0 && !(strings.HasPrefix(line, "<!DOCTYPE ghtml-v1.") && strings.Contains(line, " \"") && strings.HasSuffix(line, "\">")) {
 				return errors.New("file \"" + content.Name() + "\" does not appear to be a valid G-HTML v0 file (missing, wrong-versioned, or invalid DOCTYPE declaration - found \"" + line + "\" instead)")
 			}
 
