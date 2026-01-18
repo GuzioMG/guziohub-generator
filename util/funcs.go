@@ -73,7 +73,7 @@ func ProcessLine(line string, indentation string, path string, lineNum int) (*Li
 	//Processing content
 	realNum := lineNum - 2
 	prefix := "\n" + indentation + "<br><p class=\"termtxt-default\">&nbsp;$&nbsp;</p><p class=\"termtxt-default typing-animator\">"
-	suffix := "</p><p class=\"termtxt-default typing-animator\">_</p>"
+	suffix := "</p><p class=\"termtxt-default typing-animator skipper_hider\">_</p>"
 	if realNum == 1 {
 		prefix = strings.ReplaceAll(prefix, "<br>", "")
 	} else {
