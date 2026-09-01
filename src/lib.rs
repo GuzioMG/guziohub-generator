@@ -8,12 +8,12 @@ pub fn process(filecontent: &String) -> Result<String>{
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct Metadata<'the_metadata_cannot_outlive_its_fields>{
-	lang: &'the_metadata_cannot_outlive_its_fields str,
-	canonical: &'the_metadata_cannot_outlive_its_fields str,
-	title: &'the_metadata_cannot_outlive_its_fields str,
-	header: &'the_metadata_cannot_outlive_its_fields str,
-	description: &'the_metadata_cannot_outlive_its_fields str,
+struct Metadata<'metadata_cannot_outlive_its_fields>{
+	lang: &'metadata_cannot_outlive_its_fields str,
+	canonical: &'metadata_cannot_outlive_its_fields str,
+	title: &'metadata_cannot_outlive_its_fields str,
+	header: &'metadata_cannot_outlive_its_fields str,
+	description: &'metadata_cannot_outlive_its_fields str,
 
 	article: String,
 }
