@@ -8,33 +8,32 @@ pub fn process(filecontent: &String) -> Result<String>{
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct Metadata<'metadata_cannot_outlive_its_fields>{
-	lang: &'metadata_cannot_outlive_its_fields str,
-	canonical: &'metadata_cannot_outlive_its_fields str,
-	title: &'metadata_cannot_outlive_its_fields str,
-	header: &'metadata_cannot_outlive_its_fields str,
-	description: &'metadata_cannot_outlive_its_fields str,
+struct Metadata<'metadata_fields>{
+	lang: &'metadata_fields str,
+	canonical: &'metadata_fields str,
+	title: &'metadata_fields str,
+	header: &'metadata_fields str,
+	description: &'metadata_fields str,
 
 	article: String,
 }
 
-fn extract_metadata<'output_is_derived_from_input_so_it_cannot_outlive_input>(lines: &'output_is_derived_from_input_so_it_cannot_outlive_input [&str]) -> Result<Metadata<'output_is_derived_from_input_so_it_cannot_outlive_input>>{
+fn extract_metadata<'inputs, 'output>(lines: &[&'inputs str]) -> Result<Metadata<'output>>
+	where 'inputs: 'output
+{
 	if let [doctype, header, content @ .., closing_tag] = lines {
 		ensure!(doctype.starts_with("<!DOCTYPE ghtml-v1.0 \"") && doctype.ends_with("\">"), "Invalid G-HTML structure: Invalid doctype! Expected the 1st line to start with „<!DOCTYPE ghtml-v1.0 \"” and end with „\">”, but got „{}” instead.", doctype);
 		ensure!(closing_tag.to_string() == "</html>", "Invalid G-HTML structure: No valid closing tag! Expected the last line to be „</html>”, but got „{}” instead.", closing_tag);
 		
-		let og_header = header;
-		let header = header.strip_prefix("<html flavor=\"ghtml\" lang=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to start with „<html flavor=\"ghtml\" lang=\"”, but got „{}” instead.", og_header))?;
-		let (lang, header) = header.split_once("\" canonical=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" canonical=\"” after the the lang param, but got „{}” instead.", og_header))?;
-		let (canonical, header) = header.split_once("\" title=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" title=\"” after the the canonical param, but got „{}” instead.", og_header))?;
-		let (title, header) = header.split_once("\" header=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" header=\"” after the the title param, but got „{}” instead.", og_header))?;
-		let (article_header, header) = header.split_once("\" description=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" description=\"” after the the header param, but got „{}” instead.", og_header))?;		
-		let description = header.strip_suffix("\">").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to end with a „\">” after the the description param, but got „{}” instead.", og_header))?;
+		let (lang, next_header_segment) = header.strip_prefix("<html flavor=\"ghtml\" lang=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to start with „<html flavor=\"ghtml\" lang=\"”, but got „{}” instead.", header))?
+			.split_once("\" canonical=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" canonical=\"” after the the lang param, but got „{}” instead.", header))?;
+		let (canonical, next_header_segment) = next_header_segment.split_once("\" title=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" title=\"” after the the canonical param, but got „{}” instead.", header))?;
+		let (title, next_header_segment) = next_header_segment.split_once("\" header=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" header=\"” after the the title param, but got „{}” instead.", header))?;
+		let (header, next_header_segment) = next_header_segment.split_once("\" description=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" description=\"” after the the header param, but got „{}” instead.", header))?;
+		let description = next_header_segment.strip_suffix("\">").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to end with a „\">” after the the description param, but got „.....{}” instead.", next_header_segment))?;
 
 		return Ok(Metadata{
-			lang, canonical, title,
-			header: article_header,
-			description,
+			lang, canonical, title, header, description,
 			article: content.join("\n"),
 		});
 	} else {
