@@ -179,40 +179,38 @@ impl WordSection {
 		};
 
 		return match previous {
-			Some(previous) => match previous {
-				WordSection::Literal(base) => match current {
-					Some(WordSection::Literal(continuation)) => {
-						let mut base_mut = base.to_string();
-						base_mut.push_str(continuation.as_str());
-						return Ok(Some(WordSection::Literal(base_mut)));
-					}
-					_ => Ok(current),
+			Some(WordSection::Literal(base)) => match current {
+				Some(WordSection::Literal(continuation)) => {
+					let mut base_mut = base.to_string();
+					base_mut.push_str(continuation.as_str());
+					return Ok(Some(WordSection::Literal(base_mut)));
 				}
-				WordSection::HtmlTag(_, false) => match current {
-					Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML tags."),
-					Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML tags."),
-					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML tags."),
-					Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML tags."),
-					None => todo!("Implement support for continuing HTML tags."),
-				}
-				WordSection::VarReplacement(base, false) => match current {
-					Some(WordSection::Literal(continuation)) => {
-						let mut base = base.to_string();
-						base.push_str(continuation.as_str());
-						return Ok(Some(WordSection::VarReplacement(base, false)));
-					}
-					Some(WordSection::VarReplacement(_, _)) => Ok(Some(WordSection::VarReplacement(base.to_string(), true))),
-					_ => bail!("Cannot use {} inside a var-replacement!", chr),
-				}
-				WordSection::HtmlEntity(_, false) => match current {
-					Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML entities."),
-					Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML entities."),
-					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML entities."),
-					Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML entities."),
-					None => todo!("Implement support for continuing HTML entities."),
-				}
-				WordSection::HtmlEntity(_, true) | WordSection::VarReplacement(_, true) | WordSection::HtmlTag(_, true) => Ok(current),
+				_ => Ok(current),
 			}
+			Some(WordSection::HtmlTag(_, false)) => match current {
+				Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML tags."),
+				Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML tags."),
+				Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML tags."),
+				Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML tags."),
+				None => todo!("Implement support for continuing HTML tags."),
+			}
+			Some(WordSection::VarReplacement(base, false)) => match current {
+				Some(WordSection::Literal(continuation)) => {
+					let mut base = base.to_string();
+					base.push_str(continuation.as_str());
+					return Ok(Some(WordSection::VarReplacement(base, false)));
+				}
+				Some(WordSection::VarReplacement(_, _)) => Ok(Some(WordSection::VarReplacement(base.to_string(), true))),
+				_ => bail!("Cannot use {} inside a var-replacement!", chr),
+			}
+			Some(WordSection::HtmlEntity(_, false)) => match current {
+				Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML entities."),
+				Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML entities."),
+				Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML entities."),
+				Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML entities."),
+				None => todo!("Implement support for continuing HTML entities."),
+			}
+			Some(WordSection::HtmlEntity(_, true) | WordSection::VarReplacement(_, true) | WordSection::HtmlTag(_, true)) => Ok(current),
 			None => match current {
 				Some(section) => match section {
 					WordSection::Literal(_) => match chr {
