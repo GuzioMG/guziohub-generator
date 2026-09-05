@@ -157,12 +157,10 @@ impl WordSection {
 
 			WordSection::VarReplacement(varname, true) => match env::var(varname) {
 				Ok(content) => Ok(Renderable{length: content.chars().count(), content}),
-				Err(err) => match err {
-					env::VarError::NotPresent =>  bail!("Attempted to render an envar %{}% that doesn't exist!", varname),
-					env::VarError::NotUnicode(os_string) => {
-						let rs_string = os_string.to_string_lossy();
-						return Ok(Renderable{length: rs_string.chars().count(), content: rs_string.to_string()});
-					}
+				Err(env::VarError::NotPresent) =>  bail!("Attempted to render an envar %{}% that doesn't exist!", varname),
+				Err(env::VarError::NotUnicode(os_string)) => {
+					let rs_string = os_string.to_string_lossy();
+					return Ok(Renderable{length: rs_string.chars().count(), content: rs_string.to_string()});
 				}
 			}
 
@@ -171,7 +169,7 @@ impl WordSection {
 	}
 
 	fn from_char(previous: Option<&Self>, chr: char) -> Result<Option<Self>> {
-		let naive = match chr {
+		let current = match chr {
 			'\n' => bail!("Cannot construct a new word section when switching lines!"),
 			' ' => None,
 			'<' => Some(WordSection::HtmlTag(HtmlTag::JustStarted, false)),
@@ -182,18 +180,42 @@ impl WordSection {
 
 		return match previous {
 			Some(previous) => match previous {
-				WordSection::Literal(_) => todo!("Implement the ability to continue walking, not just start it."),
-				WordSection::HtmlTag(_, _) => todo!("Implement the ability to continue walking, not just start it."),
-				WordSection::VarReplacement(_, _) => todo!("Implement the ability to continue walking, not just start it."),
-				WordSection::HtmlEntity(_, _) => todo!("Implement the ability to continue walking, not just start it."),
+				WordSection::Literal(_) => match current {
+					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
+					None => todo!("Implement the ability to continue walking, not just start it."),
+				}
+				WordSection::HtmlTag(_, _) => match current {
+					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
+					None => todo!("Implement the ability to continue walking, not just start it."),
+				}
+				WordSection::VarReplacement(_, _) => match current {
+					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
+					None => todo!("Implement the ability to continue walking, not just start it."),
+				}
+				WordSection::HtmlEntity(_, _) => match current {
+					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
+					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
+					None => todo!("Implement the ability to continue walking, not just start it."),
+				}
 			}
-			None => match naive {
-				Some(naive) => match naive {
+			None => match current {
+				Some(section) => match section {
 					WordSection::Literal(_) => match chr {
 						'>' => Ok(Some(WordSection::HtmlEntity("gt".to_string(), true))),
-						_ => Ok(Some(naive))
+						_ => Ok(Some(section))
 					}
-					_ => Ok(Some(naive)),
+					_ => Ok(Some(section)),
 				}
 				None => Ok(Some(WordSection::HtmlEntity("nbsp".to_string(), true))),
 			},
