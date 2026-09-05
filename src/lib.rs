@@ -180,34 +180,38 @@ impl WordSection {
 
 		return match previous {
 			Some(previous) => match previous {
-				WordSection::Literal(_) => match current {
-					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
-					None => todo!("Implement the ability to continue walking, not just start it."),
+				WordSection::Literal(base) => match current {
+					Some(WordSection::Literal(continuation)) => {
+						let mut base_mut = base.to_string();
+						base_mut.push_str(continuation.as_str());
+						return Ok(Some(WordSection::Literal(base_mut)));
+					}
+					_ => Ok(current),
 				}
-				WordSection::HtmlTag(_, _) => match current {
-					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
-					None => todo!("Implement the ability to continue walking, not just start it."),
+				WordSection::HtmlTag(_, false) => match current {
+					Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML tags."),
+					Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML tags."),
+					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML tags."),
+					Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML tags."),
+					None => todo!("Implement support for continuing HTML tags."),
 				}
-				WordSection::VarReplacement(_, _) => match current {
-					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
-					None => todo!("Implement the ability to continue walking, not just start it."),
+				WordSection::VarReplacement(base, false) => match current {
+					Some(WordSection::Literal(continuation)) => {
+						let mut base = base.to_string();
+						base.push_str(continuation.as_str());
+						return Ok(Some(WordSection::VarReplacement(base, false)));
+					}
+					Some(WordSection::VarReplacement(_, _)) => Ok(Some(WordSection::VarReplacement(base.to_string(), true))),
+					_ => bail!("Cannot use {} inside a var-replacement!", chr),
 				}
-				WordSection::HtmlEntity(_, _) => match current {
-					Some(WordSection::HtmlTag(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::VarReplacement(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement the ability to continue walking, not just start it."),
-					Some(WordSection::Literal(_)) => todo!("Implement the ability to continue walking, not just start it."),
-					None => todo!("Implement the ability to continue walking, not just start it."),
+				WordSection::HtmlEntity(_, false) => match current {
+					Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML entities."),
+					Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML entities."),
+					Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML entities."),
+					Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML entities."),
+					None => todo!("Implement support for continuing HTML entities."),
 				}
+				WordSection::HtmlEntity(_, true) | WordSection::VarReplacement(_, true) | WordSection::HtmlTag(_, true) => Ok(current),
 			}
 			None => match current {
 				Some(section) => match section {
@@ -256,7 +260,9 @@ impl Walker {
 				self.word.push_back(WordSection::from_char(None, *current).with_context(|| format!("WordSection append error at char {} (#{} in „{})”:", current, self.index, self.on))?.with_context(|| format!("WordSection append error at char {} (#{} in „{})”: Got an unescaped space character (represented by a None variant), which should be impossible at the beginning of a line because spaces at word beginnings (which includes line beginnings) should be auto-escaped, and also no space should even make it that far down anyway because it should've instead been consumed by the indent-appending code.", current, self.index, self.on))?);
 			}
 		} else {
-			todo!("Implement the ability to continue walking, not just start it.");
+			dbg!(format!("At char {} (#{} in „{})”, we're continuing a line.", current, self.index, self.on));
+
+			todo!("Finish implementing the ability to continue walking, not just start it.");
 		}
 
 		//Increment and exit
