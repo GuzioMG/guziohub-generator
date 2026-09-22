@@ -210,7 +210,7 @@ impl WordSection {
 				Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML entities."),
 				None => todo!("Implement support for continuing HTML entities."),
 			}
-			Some(WordSection::HtmlEntity(_, true) | WordSection::VarReplacement(_, true) | WordSection::HtmlTag(_, true)) => Ok(current),
+			Some(WordSection::HtmlEntity(_, true) | WordSection::VarReplacement(_, true) | WordSection::HtmlTag(_, true)) => bail!("Cannot build off of a previous segment, if that segment is already completed! There's simply nothing that could possibly be added."),
 			None => match current {
 				Some(section) => match section {
 					WordSection::Literal(_) => match chr {
