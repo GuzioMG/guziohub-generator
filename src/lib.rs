@@ -1,4 +1,4 @@
-use std::{char, collections::VecDeque, env, fmt::{Display, Error}, ops::AddAssign};
+use std::{char, collections::VecDeque, env, fmt::{Display, Error}, hint, ops::AddAssign};
 
 use anyhow::{Context, Result, bail, ensure};
 
@@ -173,7 +173,7 @@ impl WordSection {
 		}
 	}
 
-	fn from_char(previous: Option<&Self>, chr: char) -> Result<Option<Self>> {
+	fn from_char(previous: Option<Self>, chr: char) -> Result<Option<Self>> {
 		let current = match chr {
 			'\n' => bail!("Cannot construct a new word section when switching lines!"),
 			' ' => None,
@@ -184,30 +184,54 @@ impl WordSection {
 		};
 
 		return match previous {
-			Some(WordSection::Literal(base)) => match current {
-				Some(WordSection::Literal(continuation)) => {
-					let mut base_mut = base.to_string();
-					base_mut.push_str(continuation.as_str());
-					return Ok(Some(WordSection::Literal(base_mut)));
+
+			Some(WordSection::Literal(mut base)) => match current {
+				Some(WordSection::Literal(_)) => {
+					base.push(chr);
+					return Ok(Some(WordSection::Literal(base)));
 				}
 				_ => Ok(current),
 			}
-			Some(WordSection::HtmlTag(_, false)) => match current {
-				Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML tags."),
-				Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML tags."),
-				Some(WordSection::HtmlEntity(_, _)) => todo!("Implement support for continuing HTML tags."),
-				Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML tags."),
-				None => todo!("Implement support for continuing HTML tags."),
+
+			Some(WordSection::HtmlTag(tag, false)) => match tag {
+				HtmlTag::JustStarted => match chr {
+					'a'|'b'|'c'|'d'|'e'|'f'|'g'|'h'|'i'|'j'|'k'|'l'|'m'|'n'|'o'|'p'|'q'|'r'|'s'|'t'|'u'|'v'|'w'|'x'|'y'|'z' => Ok(Some(WordSection::HtmlTag(HtmlTag::Opening(ParameterizedHtmlTag { tag: chr.to_string(), args: None }), false))),
+					'/' => Ok(Some(WordSection::HtmlTag(HtmlTag::Closing(chr.to_string()), false))),
+					_ => bail!("At the beginning of an HTML tag, only lowercase a-z alphanumerics (for opening/self-closing tags) and „/” (for closing tags) are allowed, but instead got „{}”.", chr)
+				}
+				_ => match chr {
+					'>' => Ok(Some(WordSection::HtmlTag(tag, true))),
+					'/' => todo!(),
+					_ => match tag {
+						HtmlTag::SelfClosing(_) => bail!("In a self-closing HTML tag, only „>” may come after the „/”, but instead got „{}”.", chr),
+						HtmlTag::Opening(ParameterizedHtmlTag { tag, args: Some(mut args) }) => {
+							args.push(chr);
+							return Ok(Some(WordSection::HtmlTag(HtmlTag::Opening(ParameterizedHtmlTag { tag, args: Some(args) }), false)));
+						}
+						HtmlTag::Opening(ParameterizedHtmlTag { mut tag, args: None }) => match chr {
+							'a'|'b'|'c'|'d'|'e'|'f'|'g'|'h'|'i'|'j'|'k'|'l'|'m'|'n'|'o'|'p'|'q'|'r'|'s'|'t'|'u'|'v'|'w'|'x'|'y'|'z'|'-' => {
+								tag.push(chr);
+								return Ok(Some(WordSection::HtmlTag(HtmlTag::Opening(ParameterizedHtmlTag { tag, args: None }), false)));
+							}
+							' ' => Ok(Some(WordSection::HtmlTag(HtmlTag::Opening(ParameterizedHtmlTag { tag, args: Some("".to_string()) }), false))),
+							_ => bail!("At the beginning of an HTML tag, only lowercase a-z alphanumerics (for opening/self-closing tags) and „/” (for closing tags) are allowed, but instead got „{}”.", chr)
+						}
+						HtmlTag::Closing(_) => todo!(),
+						// SAFETY: This unsafe code is unreachable because it's a part of fallback path, for when we already determined earlier, that HtmlTag: isn't :JustStarted.
+						HtmlTag::JustStarted => unsafe { hint::unreachable_unchecked() },
+					}
+				}
 			}
-			Some(WordSection::VarReplacement(base, false)) => match current {
-				Some(WordSection::Literal(continuation)) => {
-					let mut base = base.to_string();
-					base.push_str(continuation.as_str());
+
+			Some(WordSection::VarReplacement(mut base, false)) => match current {
+				Some(WordSection::Literal(_)) => {
+					base.push(chr);
 					return Ok(Some(WordSection::VarReplacement(base, false)));
 				}
 				Some(WordSection::VarReplacement(_, _)) => Ok(Some(WordSection::VarReplacement(base.to_string(), true))),
 				_ => bail!("Cannot use {} inside a var-replacement!", chr),
 			}
+
 			Some(WordSection::HtmlEntity(_, false)) => match current {
 				Some(WordSection::HtmlTag(_, _)) => todo!("Implement support for continuing HTML entities."),
 				Some(WordSection::VarReplacement(_, _)) => todo!("Implement support for continuing HTML entities."),
@@ -215,7 +239,9 @@ impl WordSection {
 				Some(WordSection::Literal(_)) => todo!("Implement support for continuing HTML entities."),
 				None => todo!("Implement support for continuing HTML entities."),
 			}
+
 			Some(WordSection::HtmlEntity(_, true) | WordSection::VarReplacement(_, true) | WordSection::HtmlTag(_, true)) => bail!("Cannot build off of a previous segment, if that segment is already completed! There's simply nothing that could possibly be added."),
+			
 			None => match current {
 				Some(section) => match section {
 					WordSection::Literal(_) => match chr {
@@ -291,7 +317,7 @@ impl Walker {
 				};
 
 				let next = if spaces_should_be_breaks_regardless_of_what_wordsection_fromchar_returns && *current == ' ' { None } else {
-					WordSection::from_char(previous.as_ref(), *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?
+					WordSection::from_char(previous, *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?
 				};
 
 				match next {
