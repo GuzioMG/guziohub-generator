@@ -57,7 +57,7 @@ pub struct Walker {
 	//Input line state
 	indent: Renderable,
 	indent_completion: Complete,
-	active_tags: VecDeque<ParameterizedHtmlTag>,
+	active_tags: Vec<ParameterizedHtmlTag>,
 	
 	//Collected data (Line = output line!)
 	past_lines: VecDeque<Renderable>,
@@ -99,7 +99,7 @@ struct ParameterizedHtmlTag {
 impl AddAssign for Renderable{
 	fn add_assign(&mut self, rhs: Self) {
 		self.length+=rhs.length;
-		//self.content = self.content.  //TODO <<------ I'M HERE, CONTINUE HERE!!!!!!
+		self.content.push_str(rhs.content.as_str());
 	}
 }
 
@@ -156,7 +156,7 @@ impl HtmlTag {
 impl WordSection {
 	fn render(&self) -> Result<Renderable> {
 		return match self {
-			WordSection::Literal(literal) => Ok(Renderable{length: literal.chars().count(), content: literal.to_string()}),
+			WordSection::Literal(literal) => Ok(Renderable{length: literal.chars().count(), content: literal.to_string().replace(" ", "&nbsp;")}),
 			WordSection::HtmlTag(tag, true) => tag.render(),
 			WordSection::HtmlEntity(entity, true) => Ok(Renderable{length: 1, content: format!("&{};", entity)}),
 
@@ -165,7 +165,7 @@ impl WordSection {
 				Err(env::VarError::NotPresent) =>  bail!("Attempted to render an envar %{}% that doesn't exist!", varname),
 				Err(env::VarError::NotUnicode(os_string)) => {
 					let rs_string = os_string.to_string_lossy();
-					return Ok(Renderable{length: rs_string.chars().count(), content: rs_string.to_string()});
+					return Ok(Renderable{length: rs_string.chars().count(), content: rs_string.to_string().replace(" ", "&nbsp;")});
 				}
 			}
 
@@ -242,7 +242,7 @@ impl Walker {
 
 		//Main logic
 		if self.active_line.length == 0 && self.word.is_empty(){
-			dbg!(format!("At char {} (#{} in „{})”, we're at a beginning of a new line.", current, self.index, self.on));
+			dbg!(format!("At char „{}” (#{} in „{})”, we're at a beginning of a new line.", current, self.index, self.on));
 
 			//State sanity-check and reset
 			ensure!(self.active_tags.is_empty(), "Tried to start a new line (at char {}, #{} in „{}”), but some tags remained unclosed on the previous line!.", current, self.index, self.on);
@@ -257,21 +257,22 @@ impl Walker {
 			}
 			else if indent_chars.contains(current) {
 				dbg!(format!("New line begins with an indent in form of a {}.", current));
-				self.append_indent_char(*current).with_context(|| format!("Indent append error at char {} (#{} in „{})”:", current, self.index, self.on))?;
+				self.append_indent_char(*current).with_context(|| format!("Indent append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 			}
 			else {
-				self.word.push_back(WordSection::from_char(None, *current).with_context(|| format!("WordSection append error at char {} (#{} in „{})”:", current, self.index, self.on))?.with_context(|| format!("WordSection append error at char {} (#{} in „{})”: Got an unescaped space character (represented by a None variant), which should be impossible at the beginning of a line because spaces at word beginnings (which includes line beginnings) should be auto-escaped, and also no space should even make it that far down anyway because it should've instead been consumed by the indent-appending code.", current, self.index, self.on))?);
+				self.word.push_back(WordSection::from_char(None, *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?.with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”: Got an unescaped space character (represented by a None variant), which should be impossible at the beginning of a line because spaces at word beginnings (which includes line beginnings) should be auto-escaped, and also no space should even make it that far down anyway because it should've instead been consumed by the indent-appending code.", current, self.index, self.on))?);
 				self.indent_completion = true;
 			}
 		} else {
-			dbg!(format!("At char {} (#{} in „{})”, we're continuing a line.", current, self.index, self.on));
+			dbg!(format!("At char „{}” (#{} in „{})”, we're continuing a line.", current, self.index, self.on));
 			if !self.indent_completion && indent_chars.contains(current) {
 				dbg!(format!("Which means we're continuing an indent, in form of a {}.", current));
-				self.append_indent_char(*current).with_context(|| format!("Indent append error at char {} (#{} in „{})”:", current, self.index, self.on))?;
+				self.append_indent_char(*current).with_context(|| format!("Indent append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 			}
 			else if *current == '\n' {
 				dbg!(format!("...Nevermind, we're ending it."));
-				self = self.end_word()?;
+				let ctx = format!("Tried to complete a line after char „{}” (#{} in „{}”), but it failed:", current, self.index, self.on);
+				self = self.end_word().with_context(||ctx)?;
 				self.past_lines.push_back(self.active_line);
 				self.active_line = Renderable { length: 0, ..Renderable::default() } //A new value must be assigned because the previous one was moved out of self's ownership. (and also we need to ensure that length=0 so that the „we're at the beginning of a new line” logic runs on the next pass)
 			}
@@ -284,30 +285,22 @@ impl Walker {
 						// SAFETY: This code is only reachable if we just match{}ed that "previous" is holding a Some().
 						self.word.push_back(unsafe{previous.unwrap_unchecked()});
 						previous = None;
-						spaces_should_be_breaks_regardless_of_what_wordsection_fromchar_returns = true; //This override of default behaviors is needed because when WordSection::from_char sees a space at what-it-thinks-is-the-beginning-of-a-word (and we just gaslit it into thinking that), it automatically escapes it to be an NBSP, as a 1st section of that word.
+						spaces_should_be_breaks_regardless_of_what_wordsection_fromchar_returns = true; //This override of default behaviors is needed because when WordSection::from_char sees a space at what-it-thinks-is-the-beginning-of-a-word (and we just gaslit it into thinking that it, indeed, is at the beginning), it automatically escapes it to be an NBSP. We don't want that here; just because a word ended on a tag/entity/envar section, doesn't mean we should forcefully merge it with the next word.
 					},
 					_ => ()
 				};
 
 				let next = if spaces_should_be_breaks_regardless_of_what_wordsection_fromchar_returns && *current == ' ' { None } else {
-					WordSection::from_char(previous.as_ref(), *current).with_context(|| format!("WordSection append error at char {} (#{} in „{})”:", current, self.index, self.on))?
+					WordSection::from_char(previous.as_ref(), *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?
 				};
 
 				match next {
 					None => {
-						self = self.end_word()?;
+						dbg!(format!("At char „{}” (#{} in „{})”, we're completing a word.", current, self.index, self.on));
+						let ctx = format!("Tried to complete a word after char „{}” (#{} in „{}”), but it failed:", current, self.index, self.on);
+						self = self.end_word().with_context(||ctx)?;
 					},
 					Some(section) => {
-						if let WordSection::HtmlTag(tag, true) = &section {
-							match tag {
-								HtmlTag::Opening(tag) => self.active_tags.push_back(tag.clone()), //Unfortunately, some cloning here was inevitable. I need to put the exact same object onto 2 different Vecs, where both want full ownership.
-								HtmlTag::Closing(tag) => {
-									let closes = self.active_tags.pop_back().with_context(|| format!("Tried to close </{}> at char {} (#{} in „{}), but there wasn't anything to close!", tag, current, self.index, self.on))?.tag;
-									ensure!(tag == &closes)
-								}
-								_ => (),
-							}
-						}
 						self.word.push_back(section);
 					}
 				};
@@ -317,8 +310,9 @@ impl Walker {
 		//Increment and exit
 		self.index+=1;
 		if self.index == indexable_on.len() {
-			ensure!(self.active_tags.is_empty(), "Tried to complete the walk after char {} (#{} in „{}”), but some tags remained unclosed on the previous line!.", current, self.index-1, self.on);
-			self = self.end_word()?;
+			let ctx = format!("Tried to complete the walk after char „{}” (#{} in „{}”), but the necessary end_word subtask failed:", current, self.index-1, self.on);
+			self = self.end_word().with_context(||ctx)?;
+			ensure!(self.active_tags.is_empty(), "Tried to complete the walk after char „{}” (#{} in „{}”), but some tags remained unclosed on the previous line!", current, self.index-1, self.on);
 			self.past_lines.push_back(self.active_line);
 			self.active_line = Renderable::default();
 			self.complete = true;
@@ -348,17 +342,66 @@ impl Walker {
 	}
 
 	fn end_word(mut self) -> Result<Self> {
+		const LENGTH_LIMIT: usize = 54;
+
 		//STEP 1: Render the sections.
-		let mut rendered:Renderable = Renderable::default();
+		let mut rendered = Renderable::default();
+		let mut future_active_tags = self.active_tags.clone(); //Cloning needed because we want to be able to roll-back to a backup copy (the og active_tags) when needed; that's the whole point of this var existing (if I didn't need a backup, I'd've worked on active_tags directly and AFAIK the borrow checker wouldn't complain).
 		loop {
 			let section = match self.word.pop_front() {
 				Some(section) => section,
 				None => break,
 			};
-			rendered += section.render()?
+			let rendered_section = section.render().with_context(|| format!("Section rendering failed at char #{} in „{}”:", self.index, self.on))?;
+			if let WordSection::HtmlTag(tag, true) = section {
+				match tag {
+					HtmlTag::Opening(tag) => future_active_tags.push(tag),
+					HtmlTag::Closing(tag) => {
+						let closes = future_active_tags.pop().with_context(|| format!("Tried to close </{}> at char #{} in „{}”, but there wasn't anything to close!", tag, self.index, self.on))?.tag;
+						ensure!(tag == closes, "Tried to close </{}> at char #{} in „{}”, but </{}> was expected instead!", tag, self.index, self.on, closes);
+					}
+					_ => (),
+				}
+			}
+			rendered += rendered_section;
 		}
 
-		todo!("Implement word termination.")
+		//STEP 2A: Combine with whatever's already on the line (easy case)
+		if !(rendered.length + self.active_line.length > LENGTH_LIMIT) {
+			self.active_line += rendered;
+			self.active_tags = future_active_tags;
+			return Ok(self);
+		}
+
+		//STEP 2B: line-wrapping (painful) - STEP 3: Terminate previous line
+		let mut tags_to_reopen = Vec::default();
+		loop {
+			let tag = match self.active_tags.pop() {
+				Some(tag) => tag,
+				None => break,
+			};
+			self.active_line += HtmlTag::Closing(tags_to_reopen.push_mut(tag).tag.to_string()).render().with_context(|| format!("HTML tag rendering failed at char #{} in „{}”:", self.index, self.on))?;
+		}
+		self.past_lines.push_back(self.active_line);
+		self.active_tags = future_active_tags;
+
+		//STEP 4: Start new line.
+		self.active_line = self.indent.clone(); //a "makes the borrow-checker happy"-noob-clone
+		loop {
+			let tag = match tags_to_reopen.pop() {
+				Some(tag) => tag,
+				None => break,
+			};
+			self.active_line += HtmlTag::Opening(tag).render().with_context(|| format!("HTML tag rendering failed at char #{} in „{}”:", self.index, self.on))?;
+		}
+
+		//STEP 5: Combine with whatever's on the just-created line, and make sure that it still fits.
+		self.active_line += rendered;
+		if self.active_line.length > LENGTH_LIMIT {
+			bail!("Even after being moved to a new line, „{}” was just too gosh-damn DummyThiccc™ to fit in the {}-char limit (reached {} chars after combining with the indent and re-opened tags)", self.active_line, LENGTH_LIMIT, self.active_line.length);
+		} else {
+			return Ok(self);
+		}
 	}
 
 	pub fn new(target: String) -> Self {
