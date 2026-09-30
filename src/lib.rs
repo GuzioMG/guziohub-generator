@@ -227,7 +227,7 @@ impl WordSection {
 			WordSection::HtmlTag(tag, false) => match tag {
 				HtmlTag::JustStarted => match chr {
 					'a'|'b'|'c'|'d'|'e'|'f'|'g'|'h'|'i'|'j'|'k'|'l'|'m'|'n'|'o'|'p'|'q'|'r'|'s'|'t'|'u'|'v'|'w'|'x'|'y'|'z' => Ok(VecDeque::from(WordSection::HtmlTag(HtmlTag::Opening(ParameterizedHtmlTag { tag: chr.to_string(), args: None }), false))),
-					'/' => Ok(VecDeque::from(WordSection::HtmlTag(HtmlTag::Closing(chr.to_string()), false))),
+					'/' => Ok(VecDeque::from(WordSection::HtmlTag(HtmlTag::Closing("".to_string()), false))),
 					_ => bail!("At the beginning of an HTML tag, only a-z alphanumerics (for opening/self-closing tags) and „/” (for closing tags) are allowed, but instead got „{}”.", chr)
 				}
 				_ => match chr {
