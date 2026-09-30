@@ -162,7 +162,7 @@ impl HtmlTag {
 			HtmlTag::Closing(tag) => format!("</{}>", tag),
 			HtmlTag::Opening(tag) | HtmlTag::SelfClosing(tag) => {
 				let ending = match self {
-					HtmlTag::SelfClosing(_) => " />",
+					HtmlTag::SelfClosing(_) => "/>",
 					_ => ">"
 				};
 				match &tag.args {
