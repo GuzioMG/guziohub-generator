@@ -349,6 +349,7 @@ impl Walker {
 				self.active_line = Renderable { length: 0, ..Renderable::default() } //A new value must be assigned because the previous one was moved out of self's ownership. (and also we need to ensure that length=0 so that the „we're at the beginning of a new line” logic runs on the next pass)
 			}
 			else {
+				self.indent_completion = true;
 				let mut vec = WordSection::from_char(self.word.pop_back().unwrap_or(SeparatorOrNoPrevious), *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 				match vec.pop_front() {
 					Some(SeparatorOrNoPrevious) => {
