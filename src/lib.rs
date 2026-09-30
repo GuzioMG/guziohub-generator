@@ -37,7 +37,7 @@ impl<'output> Metadata<'output> {
 	fn new<'inputs>(lines: &[&'inputs str]) -> Result<(Self, String)>
 		where 'inputs: 'output,
 	{
-		if let [doctype, header, content @ .., closing_tag] = lines {
+		if let [doctype, header, content@.., closing_tag] = lines {
 			ensure!(doctype.starts_with("<!DOCTYPE ghtml-v2.0 \"") && doctype.ends_with("\">"), "Invalid G-HTML structure: Invalid doctype! Expected the 1st line to start with „<!DOCTYPE ghtml-v2.0 \"” and end with „\">”, but got „{}” instead.", doctype);
 			ensure!(closing_tag.to_string() == "</html>", "Invalid G-HTML structure: No valid closing tag! Expected the last line to be „</html>”, but got „{}” instead.", closing_tag);
 			
