@@ -1,4 +1,4 @@
-use std::{char, collections::VecDeque, env, fmt::{Display, Error}, hint, ops::AddAssign};
+use std::{char, collections::VecDeque, env, fmt::{Debug, Display, Error}, hint, ops::AddAssign};
 
 use anyhow::{Context, Result, bail, ensure};
 
@@ -6,21 +6,29 @@ use crate::WordSection::SeparatorOrNoPrevious;
 
 
 
-pub fn process(filecontent: &String) -> Result<String> {
-	let lines = filecontent.lines().collect::<Vec<&str>>();
-	let meta = Metadata::new(lines.as_slice())?;
-	dbg!(&meta.0);
-	return Ok(meta.1);
+pub fn process(filecontent: &String) -> Result<(Metadata<'_>, VecDeque<Renderable>)> {
+	let (meta, text) = Metadata::new(filecontent.lines().collect::<Vec<&str>>().as_slice())?;
+	let mut walker = Walker::new(text);
+
+	return Ok((meta,
+		loop {
+			walker = walker.walk().with_context(||"Failure while walking over the content:")?;
+			if walker.complete {
+				break walker.past_lines;
+			}
+		}
+	));
 }
 
 
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct Metadata<'metadata_fields> {
+pub struct Metadata<'metadata_fields> {
 	lang: &'metadata_fields str,
 	canonical: &'metadata_fields str,
 	title: &'metadata_fields str,
 	header: &'metadata_fields str,
+	template: &'metadata_fields str,
 	description: &'metadata_fields str,
 }
 
@@ -37,10 +45,11 @@ impl<'output> Metadata<'output> {
 				.split_once("\" canonical=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" canonical=\"” after the the lang param, but got „{}” instead.", header))?;
 			let (canonical, next_header_segment) = next_header_segment.split_once("\" title=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" title=\"” after the the canonical param, but got „{}” instead.", header))?;
 			let (title, next_header_segment) = next_header_segment.split_once("\" header=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" header=\"” after the the title param, but got „{}” instead.", header))?;
-			let (header, next_header_segment) = next_header_segment.split_once("\" description=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" description=\"” after the the header param, but got „{}” instead.", header))?;
+			let (header, next_header_segment) = next_header_segment.split_once("\" template=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" template=\"” after the the header param, but got „{}” instead.", header))?;
+			let (template, next_header_segment) = next_header_segment.split_once("\" description=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" description=\"” after the the template param, but got „{}” instead.", header))?;
 			let description = next_header_segment.strip_suffix("\">").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to end with a „\">” after the the description param, but got „.....{}” instead.", next_header_segment))?;
 	
-			return Ok((Metadata{lang, canonical, title, header, description}, content.join("\n")));
+			return Ok((Metadata{lang, canonical, title, header, template, description}, content.join("\n")));
 		} else {
 			bail!("Not enough lines provided! Got {}, but expected at least 4.", lines.len());
 		}
@@ -50,7 +59,7 @@ impl<'output> Metadata<'output> {
 
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Walker {
+struct Walker {
 	//Walker state
 	index: usize,
 	complete: Complete,
@@ -67,8 +76,8 @@ pub struct Walker {
 	word: VecDeque<WordSection>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct Renderable {
+#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Renderable {
 	length: usize,
 	content: String,
 }
@@ -106,16 +115,22 @@ impl AddAssign for Renderable{
 	}
 }
 
+impl Debug for Renderable {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		return std::fmt::Display::fmt(&format!("{} | {}", self.length, self.content), f);
+	}
+}
+
 impl Display for Renderable {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		return self.content.fmt(f);
+		return std::fmt::Display::fmt(&self.content, f);
 	}
 }
 
 impl Display for WordSection {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		return match self.render() {
-			Ok(result) => result.fmt(f),
+			Ok(result) => std::fmt::Display::fmt(&result, f),
 			Err(_) => Err(Error)
 		}
 	}
@@ -124,7 +139,7 @@ impl Display for WordSection {
 impl Display for HtmlTag {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		return match self.render() {
-			Ok(result) => result.fmt(f),
+			Ok(result) => std::fmt::Display::fmt(&result, f),
 			Err(_) => Err(Error)
 		}
 	}
@@ -286,7 +301,7 @@ impl WordSection {
 }
 
 impl Walker {
-	pub fn walk(mut self) -> Result<Self> {
+	fn walk(mut self) -> Result<Self> {
 		//Known special chars
 		let indent_chars = ['|', ' ', '\\', '*', '-', '[', '/'];
 
@@ -455,7 +470,7 @@ impl Walker {
 		}
 	}
 
-	pub fn new(target: String) -> Self {
+	fn new(target: String) -> Self {
 		return Walker { on: target, ..Self::default() };
 	}
 }
