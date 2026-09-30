@@ -74,6 +74,7 @@ struct Walker {
 	past_lines: VecDeque<Renderable>,
 	active_line: Renderable,
 	word: VecDeque<WordSection>,
+	first_word: bool,
 }
 
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -182,12 +183,12 @@ impl HtmlTag {
 impl WordSection {
 	fn render(&self) -> Result<Renderable> {
 		return match self {
-			WordSection::Literal(literal) => Ok(Renderable{length: literal.chars().count(), content: literal.to_string().replace(" ", "&nbsp;")}),
+			WordSection::Literal(literal) => Ok(Renderable{length: literal.chars().count(), content: literal.to_string()}),
 			WordSection::HtmlTag(tag, true) => tag.render(),
 			WordSection::HtmlEntity(entity, true) => Ok(Renderable{length: 1, content: format!("&{};", entity)}),
 
 			WordSection::VarReplacement(varname, true) => match env::var(varname) {
-				Ok(content) => Ok(Renderable{length: content.chars().count(), content}),
+				Ok(content) => Ok(Renderable{length: content.chars().count(), content: content.replace(" ", "&nbsp;")}),
 				Err(env::VarError::NotPresent) =>  bail!("Attempted to render an envar %{}% that doesn't exist!", varname),
 				Err(env::VarError::NotUnicode(os_string)) => {
 					let rs_string = os_string.to_string_lossy();
@@ -319,6 +320,7 @@ impl Walker {
 			self.indent_completion = false;
 			self.indent.content = "".to_string();
 			self.indent.length = 0;
+			self.first_word = true;
 
 			//Line init strategies
 			if *current == '\n' {
@@ -433,7 +435,9 @@ impl Walker {
 		}
 
 		//STEP 2A: Combine with whatever's already on the line (easy case)
-		if !(rendered.length + self.active_line.length > LENGTH_LIMIT) {
+		if !(rendered.length + self.active_line.length + 1 > LENGTH_LIMIT) {
+			if self.first_word { self.first_word = false; }
+			else { self.active_line += Renderable{length: 1, content: "&nbsp;".to_string()}; }
 			self.active_line += rendered;
 			self.active_tags = future_active_tags;
 			return Ok(self);
