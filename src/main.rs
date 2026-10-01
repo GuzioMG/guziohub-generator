@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env::args_os, fs, io, path::{Path, PathBuf}};
+use std::{collections::HashMap, env::args_os, fs, io, ops::AddAssign, path::PathBuf};
 use guziohub_generator::*;
 use anyhow::{Context, Error, Result, bail};
 use walkdir::WalkDir;
@@ -134,13 +134,23 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 				print!("Syntax OK!; ");
 				match templates.get(meta.get_template()) {
 					Some(Ok(template)) => {
-						let applied = meta.apply_to_template(template.clone());
-						dbg!(applied);
-						dbg!(lines);
-						todo!("Continue work from here.");
+						print!("Template FOUND!; ");
+						let mut index: usize = 0;
+						let mut processed_lines = LineResult::default();
+						for line in lines {
+							index+=1;
+							processed_lines+=LineResult::new(line, index);
+						}
+						let ctx_good = format!("Will be saved at: {}", ghtml.ok);
+						let ctx_bad = format!("Intended save path ({}) already occupied by an asset!", ghtml.ok);
+						if let Some(_) = assets.insert(ghtml.ok, Asset::Literal(processed_lines.apply_to_template(&meta.apply_to_template(template)))) {
+							save_autopsy(&mut assets, Error::msg(ctx_bad), ghtml.err, "Saving IMPOSSIBLE!")?;
+						} else {
+							return Ok(println!("{}", ctx_good));
+						}
 					},
 					Some(Err(err)) => bail!("Template processing error: Template „{}” exists, but can't be loaded due to an IO error: {}", meta.get_template(), err),
-					None => save_autopsy(&mut assets, Error::msg(format!("templates.get({}) returned nothing", meta.get_template())), ghtml.err, "Template not found")?,
+					None => save_autopsy(&mut assets, Error::msg(format!("templates.get(\"{}\") returned nothing", meta.get_template())), ghtml.err, "Template NOT FOUND!")?,
 				}
 			},
 			Err(err) => {
@@ -175,4 +185,31 @@ struct SourcePaths {
 	src: PathBuf,
 	ok: String,
 	err: String
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct LineResult {
+	html: String,
+	css: String
+}
+
+impl AddAssign for LineResult {
+	fn add_assign(&mut self, rhs: Self) {
+		self.html.push_str(&rhs.html);
+		self.css.push_str(&rhs.css);
+	}
+}
+
+impl ApplyToTemplate for LineResult {
+	fn apply_to_template(&self, template: &String) -> String {
+		return template
+		.replace("{{PAGE_CONTENT}}", &self.html)
+		.replace("/*Slot for auto-generated CSS*/", &self.css);
+	}
+}
+
+impl LineResult {
+	fn new(line: StringGaslitAboutItsLength, index: usize) -> Self {
+		todo!();
+	}
 }

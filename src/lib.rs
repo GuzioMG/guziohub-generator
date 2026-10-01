@@ -66,11 +66,11 @@ impl<'output> Metadata<'output> {
 impl ApplyToTemplate for Metadata<'_> {
 	fn apply_to_template(&self, template: &String) -> String {
 		return template
-			.replace("{{PAGE_LANG}}", self.lang)
-			.replace("{{PAGE_DESCRIPTION}}", self.description)
-			.replace("{{PAGE_TITLE}}", self.title)
-			.replace("{{CANONICAL_URL}}", self.canonical)
-			.replace("{{PAGE_HEADER}}", self.header);
+		.replace("{{PAGE_LANG}}", self.lang)
+		.replace("{{PAGE_DESCRIPTION}}", self.description)
+		.replace("{{PAGE_TITLE}}", self.title)
+		.replace("{{CANONICAL_URL}}", self.canonical)
+		.replace("{{PAGE_HEADER}}", self.header);
 	}
 }
 
