@@ -1,4 +1,4 @@
-use std::{char, collections::VecDeque, env, fmt::{Debug, Display, Error}, hint, ops::AddAssign};
+use std::{char, cmp::max, collections::VecDeque, env, fmt::{Debug, Display, Error}, hint, ops::AddAssign};
 use anyhow::{Context, Result, bail, ensure};
 use crate::WordSection::SeparatorOrNoPrevious;
 
@@ -72,7 +72,7 @@ impl ApplyToTemplate for Metadata<'_> {
 		.replace("{{CANONICAL_URL}}", self.canonical)
 		.replace("{{PAGE_TITLE}}", self.title)
 		.replace("{{PAGE_HEADER}}", self.header)
-		.replace("{{DEFAULT_CLASS}}", self.defaultclass)
+		.replace("{{_INTERNAL_DEFAULT_CLASS}}", self.defaultclass)
 		.replace("{{PAGE_DESCRIPTION}}", self.description)
 	}
 }
@@ -226,9 +226,13 @@ impl From<WordSection> for VecDeque<WordSection> {
 	}
 }
 
-impl StringGaslitAboutItsLength{
+impl StringGaslitAboutItsLength {
 	pub fn unwrap(self) -> (String, usize) {
 		return (self.content, self.length);
+	}
+
+	pub fn find_longest(&self, longest: &mut usize) {
+		*longest = max(*longest, self.length);
 	}
 }
 
