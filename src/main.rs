@@ -1,6 +1,6 @@
-use std::{cmp::max, collections::HashMap, env::args_os, fmt::format, fs, io, ops::AddAssign, path::PathBuf};
+use std::{cmp::max, collections::HashMap, env::args_os, fs, io, ops::AddAssign, path::PathBuf};
 use guziohub_generator::*;
-use anyhow::{Context, Error, Result, bail};
+use anyhow::{Context, Error, Result, bail, ensure};
 use walkdir::WalkDir;
 
 fn main() -> Result<()>{
@@ -61,8 +61,8 @@ fn arg_fail(count: usize) -> Result<()> {
 	bail!("Expected 1-3 arguments (incl. flags), but got {} instead! This isn't valid usage - try using \"help\"|\"--help\"|\"-h\" for help.", count);
 }
 
-fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
-	println!("[1/3] -- READING SRC TREE");
+fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
+	println!("[1/4] -- READING SRC TREE");
 	let mut templates: HashMap<String, io::Result<String>> = HashMap::new();
 	let mut assets: HashMap<String, Asset> = HashMap::new();
 	let mut sources: Vec<SourcePaths> = Vec::new();
@@ -79,7 +79,7 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 					println!(" G-HTML file.");
 					match path.strip_suffix(".g.html") {
 						Some(stripped) => {
-							let stripped = stripped.replacen(src.as_str(), &dest, 1);
+							let stripped = stripped.replacen(src.as_str(), &dst, 1);
 							let mut ok = stripped.clone();
 							let mut err = stripped.clone();
 							ok.push_str(".html");
@@ -102,17 +102,18 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 				else {
 					println!("n asset.");
 					let asset_src;
-					if file.file_type().is_dir() {
+					let ftype = file.file_type();
+					if ftype.is_dir() {
 						asset_src = Asset::Directory;
-					} else if file.path_is_symlink() && file.file_type().is_file() {
+					} else if file.path_is_symlink() && ftype.is_file() {
 						asset_src = Asset::Copied(fs::read_link(path_raw).with_context(||format!("File walking error: Couldn't unwrap symlink „{}” to a real path:", path))?.as_path().to_path_buf());
-					} else if file.file_type().is_file() {
+					} else if ftype.is_file() {
 						asset_src = Asset::Copied(path_raw.to_path_buf());
 					} else {
 						bail!("Asset processing error: „{}” is an unsupported asset type (eg. block device / socket).", path);
 					}
 					
-					let placement = path.replacen(src.as_str(), &dest, 1);
+					let placement = path.replacen(src.as_str(), &dst, 1);
 					let ctx = format!("Asset processing error: Multiple assets tried to position themselves at „{}”.", placement);
 					if let Some(_) = assets.insert(placement, asset_src) {
 						bail!(ctx);
@@ -122,12 +123,12 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 		}
 	}
 
-	println!("[2/3] -- APPLYING TEMPLATES");
-	let mut step: usize = 0;
-	let steps = sources.len();
+	println!("[2/4] -- APPLYING TEMPLATES");
+	let mut index: usize = 0;
+	let max_index = sources.len();
 	for ghtml in sources {
-		step+=1;
-		print!("Processing {}/{} G-HTML files - {}  ->  ", step, steps, ghtml.src.as_os_str().to_string_lossy().to_string());
+		index+=1;
+		print!("Processing {}/{} G-HTML files - {}  ->  ", index, max_index, ghtml.src.as_os_str().to_string_lossy().to_string());
 		let file = fs::read_to_string(ghtml.src).with_context(||"Couldn't even get to it due to an IO error:")?;
 		match process(&file) {
 			Ok((meta, lines)) => {
@@ -149,7 +150,7 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 						if let Some(_) = assets.insert(ghtml.ok, Asset::Literal(meta.apply_to_template(&processed_lines.apply_to_template(template)).replace("{{_INTERNAL_LONGEST_CONTENT}}", &longest_line.to_string()))) {
 							save_autopsy(&mut assets, Error::msg(ctx_bad), ghtml.err, "Saving IMPOSSIBLE!")?;
 						} else {
-							return Ok(println!("{}", ctx_good));
+							println!("{}", ctx_good);
 						}
 					},
 					Some(Err(err)) => bail!("Template processing error: Template „{}” exists, but can't be loaded due to an IO error: {}", meta.get_template(), err),
@@ -159,6 +160,85 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 			Err(err) => {
 				save_autopsy(&mut assets, err, ghtml.err, "Syntax ERR!")?;
 			}
+		}
+	}
+
+	println!("[3/4] -- UPDATING DST TREE");
+	for found in WalkDir::new(&dst).follow_links(true).same_file_system(false) {
+		let file = found.with_context(||"File walking error:")?;
+		let path_raw = file.path();
+		match path_raw.to_str() {
+			None => bail!("File walking error: Path „{}” contains non-UTF-8 sequences.", path_raw.to_string_lossy()),
+			Some(path) => {
+				let asset = assets.remove(&path.to_string());
+				let ftype = file.file_type();
+				if ftype.is_dir(){
+					match asset {
+						Some(Asset::Directory) => println!("Directory at {} already exists; we good.", path),
+						Some(_) => bail!("A whole directory has seemingly ceased to be a directory. This is suspiciously unusual - possibly dst was a wrong path? To prevent data loss, any further walking will be paused. If this is intentional, please remove {} manually.", path),
+						None => bail!("A whole directory has seemingly gone missing. This is suspiciously unusual - possibly dst was a wrong path? To prevent data loss, any further walking will be paused. If this is intentional, please remove {} manually.", path),
+					}
+				} else if ftype.is_file() {
+					match asset {
+						Some(Asset::Directory) | None => {
+							print!("{} isn't meant to be a file - removing it... ", path);
+							ensure!(!test_mode, "Running in test-mode! No removal allowed.");
+							fs::remove_file(path)?;
+							if asset.is_some() {
+								println!("  ...And replacing with a folder!");
+								fs::create_dir_all(path)?;
+							} else {
+								println!("DONE!");
+							}
+						}
+						Some(Asset::Copied(from)) => {
+							if test_mode {
+								println!("Found a file at {}. This ROUGHLY matches the expectation of a copied asset at that location, so I'm not doing a diff and assuming it's OK.", path)
+							} else {
+								println!("Found a file at {}. Coping a static asset onto it...", path);
+								fs::copy(from, path_raw)?;
+							}
+						}
+						Some(Asset::Literal(contents)) => {
+							if test_mode {
+								println!("Found a file at {}. Expected a G-HTML result there, so I'll diff...", path);
+								let file = fs::read_to_string(path_raw)?;
+								if file != contents {
+									bail!("Contents were „{}” instead of the expected „{}”!", file, contents)
+								}
+							} else {
+								println!("Found a file at {}. Writing a G-HTML result onto it...", path);
+								fs::write(path_raw, contents)?;
+							}
+						}
+					}
+				} else {
+					bail!("File walking error: „{}” is an unsupported type (eg. block device / socket).", path);
+				}
+			}
+		}
+	}
+
+	println!("[4/4] -- CREATING MISSING ASSETS");
+	let mut index: usize = 0;
+	let max_index = assets.len();
+	for (path, asset) in assets {
+		index+=1;
+		print!("Creating {}/{} assets - {}  ->  ", index, max_index, path);
+		ensure!(!test_mode, "Running in test-mode! No creation allowed.");
+		match asset {
+			Asset::Directory => {
+				println!("Creating dir(s)...",);
+				fs::create_dir_all(path)?;
+			},
+			Asset::Copied(to) =>  {
+				println!("Coping a static asset...",);
+				fs::copy(path, to)?;
+			},
+			Asset::Literal(contents) =>  {
+				println!("Writing a G-HTML result...",);
+				fs::write(path, contents)?;
+			},
 		}
 	}
 
