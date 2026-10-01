@@ -1,12 +1,9 @@
 use std::{char, collections::VecDeque, env, fmt::{Debug, Display, Error}, hint, ops::AddAssign};
-
 use anyhow::{Context, Result, bail, ensure};
-
 use crate::WordSection::SeparatorOrNoPrevious;
 
 
-
-pub fn process<'input, 'output>(filecontent: &'input String) -> Result<(Metadata<'output>, VecDeque<Renderable>)>
+pub fn process<'input, 'output>(filecontent: &'input String) -> Result<(Metadata<'output>, VecDeque<StringGaslitAboutItsLength>)>
 	where 'input: 'output
 {
 	let (meta, text) = Metadata::new(filecontent.lines().collect::<Vec<&str>>().as_slice())?;
@@ -20,6 +17,11 @@ pub fn process<'input, 'output>(filecontent: &'input String) -> Result<(Metadata
 			}
 		}
 	));
+}
+
+
+pub trait ApplyToTemplate {
+	fn apply_to_template(&self, template: &String) -> String;
 }
 
 
@@ -59,8 +61,10 @@ impl<'output> Metadata<'output> {
 	pub fn get_template(&self) -> &'output str {
 		return self.template;
 	}
+}
 
-	pub fn apply_to_template(&self, template: String) -> String {
+impl ApplyToTemplate for Metadata<'_> {
+	fn apply_to_template(&self, template: &String) -> String {
 		return template
 			.replace("{{PAGE_LANG}}", self.lang)
 			.replace("{{PAGE_DESCRIPTION}}", self.description)
@@ -80,24 +84,22 @@ struct Walker {
 	on: String,
 
 	//Input line state
-	indent: Renderable,
+	indent: StringGaslitAboutItsLength,
 	indent_completion: Complete,
 	active_tags: Vec<ParameterizedHtmlTag>,
 	
 	//Collected data (Line = output line!)
-	past_lines: VecDeque<Renderable>,
-	active_line: Renderable,
+	past_lines: VecDeque<StringGaslitAboutItsLength>,
+	active_line: StringGaslitAboutItsLength,
 	word: VecDeque<WordSection>,
 	first_word: bool,
 }
 
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Renderable {
+pub struct StringGaslitAboutItsLength {
 	length: usize,
 	content: String,
 }
-
-type Complete = bool;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum WordSection {
@@ -122,21 +124,27 @@ struct ParameterizedHtmlTag {
 	args: Option<String>,
 }
 
+trait Renderable {
+	fn render(&self) -> Result<StringGaslitAboutItsLength>;
+}
 
-impl AddAssign for Renderable{
+type Complete = bool;
+
+
+impl AddAssign for StringGaslitAboutItsLength{
 	fn add_assign(&mut self, rhs: Self) {
 		self.length+=rhs.length;
 		self.content.push_str(rhs.content.as_str());
 	}
 }
 
-impl Debug for Renderable {
+impl Debug for StringGaslitAboutItsLength {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		return std::fmt::Display::fmt(&format!("{} | {}", self.length, self.content), f);
 	}
 }
 
-impl Display for Renderable {
+impl Display for StringGaslitAboutItsLength {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		return std::fmt::Display::fmt(&self.content, f);
 	}
@@ -160,17 +168,8 @@ impl Display for HtmlTag {
 	}
 }
 
-impl From<WordSection> for VecDeque<WordSection> {
-	fn from(value: WordSection) -> Self {
-		let mut vec = VecDeque::new();
-		vec.push_back(value);
-		return vec;
-	}
-}
-
-
-impl HtmlTag {
-	fn render(&self) -> Result<Renderable> {
+impl Renderable for HtmlTag {
+	fn render(&self) -> Result<StringGaslitAboutItsLength> {
 		let content = match self {
 			HtmlTag::JustStarted => bail!("Cannot render an incomplete tag!"),
 			HtmlTag::Closing(tag) => format!("</{}>", tag),
@@ -190,23 +189,23 @@ impl HtmlTag {
 
 		let length: usize = 0; //TODO: Add a tag param that overrides the size (for eg. emoji-style images, that should be rendered in-line as if they were letters (size 1 instead of 0) or for dummy tags that simply do nothing except for adding -1 to account for stuff like ligatures)
 
-		return Ok(Renderable { length, content });
+		return Ok(StringGaslitAboutItsLength { length, content });
 	}
 }
 
-impl WordSection {
-	fn render(&self) -> Result<Renderable> {
+impl Renderable for WordSection {
+	fn render(&self) -> Result<StringGaslitAboutItsLength> {
 		return match self {
-			WordSection::Literal(literal) => Ok(Renderable{length: literal.chars().count(), content: literal.to_string()}),
+			WordSection::Literal(literal) => Ok(StringGaslitAboutItsLength{length: literal.chars().count(), content: literal.to_string()}),
 			WordSection::HtmlTag(tag, true) => tag.render(),
-			WordSection::HtmlEntity(entity, true) => Ok(Renderable{length: 1, content: format!("&{};", entity)}),
+			WordSection::HtmlEntity(entity, true) => Ok(StringGaslitAboutItsLength{length: 1, content: format!("&{};", entity)}),
 
 			WordSection::VarReplacement(varname, true) => match env::var(varname) {
-				Ok(content) => Ok(Renderable{length: content.chars().count(), content: content.replace(" ", "&nbsp;")}),
+				Ok(content) => Ok(StringGaslitAboutItsLength{length: content.chars().count(), content: content.replace(" ", "&nbsp;")}),
 				Err(env::VarError::NotPresent) =>  bail!("Attempted to render an envar %{}% that doesn't exist!", varname),
 				Err(env::VarError::NotUnicode(os_string)) => {
 					let rs_string = os_string.to_string_lossy();
-					return Ok(Renderable{length: rs_string.chars().count(), content: rs_string.to_string().replace(" ", "&nbsp;")});
+					return Ok(StringGaslitAboutItsLength{length: rs_string.chars().count(), content: rs_string.to_string().replace(" ", "&nbsp;")});
 				}
 			}
 
@@ -214,8 +213,19 @@ impl WordSection {
 			SeparatorOrNoPrevious => WordSection::HtmlEntity("nbsp".to_string(), true).render()
 		}
 	}
+}
 
-	fn from_char(previous: Self, chr: char) -> Result<VecDeque<Self>> {
+impl From<WordSection> for VecDeque<WordSection> {
+	fn from(value: WordSection) -> Self {
+		let mut vec = VecDeque::new();
+		vec.push_back(value);
+		return vec;
+	}
+}
+
+
+impl WordSection {
+	fn new(previous: Self, chr: char) -> Result<VecDeque<Self>> {
 		let current = match chr {
 			'\n' => bail!("Cannot construct a new word section when switching lines!"),
 			' ' => WordSection::SeparatorOrNoPrevious,
@@ -302,7 +312,7 @@ impl WordSection {
 					vec.push_back(SeparatorOrNoPrevious);
 				}
 				else {
-					vec.push_back(Self::from_char(SeparatorOrNoPrevious, chr)?.pop_front().with_context(|| "Something went horribly wrong when processing WordSection::from_char - it returned an empty vec, but is should never do so.")?);
+					vec.push_back(Self::new(SeparatorOrNoPrevious, chr)?.pop_front().with_context(|| "Something went horribly wrong when processing WordSection::from_char - it returned an empty vec, but is should never do so.")?);
 				}
 				return Ok(vec);
 			}
@@ -339,14 +349,14 @@ impl Walker {
 			//Line init strategies
 			if *current == '\n' {
 				//dbg!(format!("It seems to be empty!"));
-				self.past_lines.push_back(Renderable { length: 0, content: "".to_string() });
+				self.past_lines.push_back(StringGaslitAboutItsLength { length: 0, content: "".to_string() });
 			}
 			else if indent_chars.contains(current) {
 				//dbg!(format!("New line begins with an indent in form of a {}.", current));
 				self.append_indent_char(*current).with_context(|| format!("Indent append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 			}
 			else {
-				self.word.push_back(WordSection::from_char(SeparatorOrNoPrevious, *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?.pop_front().with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”: Something went horribly wrong when processing WordSection::from_char - it returned an empty vec, but is should never do so.", current, self.index, self.on))?);
+				self.word.push_back(WordSection::new(SeparatorOrNoPrevious, *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?.pop_front().with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”: Something went horribly wrong when processing WordSection::from_char - it returned an empty vec, but is should never do so.", current, self.index, self.on))?);
 				self.indent_completion = true;
 			}
 		} else {
@@ -360,11 +370,11 @@ impl Walker {
 				let ctx = format!("Tried to complete a line after char „{}” (#{} in „{}”), but it failed:", current, self.index, self.on);
 				self = self.end_word().with_context(||ctx)?;
 				self.past_lines.push_back(self.active_line);
-				self.active_line = Renderable { length: 0, ..Renderable::default() } //A new value must be assigned because the previous one was moved out of self's ownership. (and also we need to ensure that length=0 so that the „we're at the beginning of a new line” logic runs on the next pass)
+				self.active_line = StringGaslitAboutItsLength { length: 0, ..StringGaslitAboutItsLength::default() } //A new value must be assigned because the previous one was moved out of self's ownership. (and also we need to ensure that length=0 so that the „we're at the beginning of a new line” logic runs on the next pass)
 			}
 			else {
 				self.indent_completion = true;
-				let mut vec = WordSection::from_char(self.word.pop_back().unwrap_or(SeparatorOrNoPrevious), *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
+				let mut vec = WordSection::new(self.word.pop_back().unwrap_or(SeparatorOrNoPrevious), *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 				match vec.pop_front() {
 					Some(SeparatorOrNoPrevious) => {
 						//dbg!(format!("At char „{}” (#{} in „{})”, we're completing a word.", current, self.index, self.on));
@@ -397,7 +407,7 @@ impl Walker {
 			self = self.end_word().with_context(||ctx)?;
 			ensure!(self.active_tags.is_empty(), "Tried to complete the walk after char „{}” (#{} in „{}”), but some tags remained unclosed on the previous line!", current, self.index-1, self.on);
 			self.past_lines.push_back(self.active_line);
-			self.active_line = Renderable::default();
+			self.active_line = StringGaslitAboutItsLength::default();
 			self.complete = true;
 		}
 		return Ok(self);
@@ -428,7 +438,7 @@ impl Walker {
 		const LENGTH_LIMIT: usize = 54;
 
 		//STEP 1: Render the sections.
-		let mut rendered = Renderable::default();
+		let mut rendered = StringGaslitAboutItsLength::default();
 		let mut future_active_tags = self.active_tags.clone(); //Cloning needed because we want to be able to roll-back to a backup copy (the og active_tags) when needed; that's the whole point of this var existing (if I didn't need a backup, I'd've worked on active_tags directly and AFAIK the borrow checker wouldn't complain).
 		loop {
 			let section = match self.word.pop_front() {
@@ -452,7 +462,7 @@ impl Walker {
 		//STEP 2A: Combine with whatever's already on the line (easy case)
 		if !(rendered.length + self.active_line.length + 1 > LENGTH_LIMIT) {
 			if self.first_word { self.first_word = false; }
-			else { self.active_line += Renderable{length: 1, content: "&nbsp;".to_string()}; }
+			else { self.active_line += StringGaslitAboutItsLength{length: 1, content: "&nbsp;".to_string()}; }
 			self.active_line += rendered;
 			self.active_tags = future_active_tags;
 			return Ok(self);
