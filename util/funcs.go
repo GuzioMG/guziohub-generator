@@ -41,7 +41,7 @@ func ExtractMetadata(line string, path string) (*DocumentData, error) {
 	}
 }
 
-/* path is only for error messages, to help the user identify where the metadata extraction was attempted - so it can be invalid (eg. something like "<internal>" or "<unknown>") if extracting from an "anonymous" source (e.g., a string) */
+/* path is only for error messages, to help the user identify where line processing was attempted - so it can be invalid (eg. something like "<internal>" or "<unknown>") if extracting from an "anonymous" source (e.g., a string) */
 func ProcessLine(line string, indentation string, path string, lineNum int) (*LineData, error) {
 
 	//Compiling RegEx
