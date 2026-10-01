@@ -143,7 +143,7 @@ fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
 						}
 						let ctx_good = format!("Will be saved at: {}", ghtml.ok);
 						let ctx_bad = format!("Intended save path ({}) already occupied by an asset!", ghtml.ok);
-						if let Some(_) = assets.insert(ghtml.ok, Asset::Literal(processed_lines.apply_to_template(&meta.apply_to_template(template)))) {
+						if let Some(_) = assets.insert(ghtml.ok, Asset::Literal(meta.apply_to_template(&processed_lines.apply_to_template(template)))) {
 							save_autopsy(&mut assets, Error::msg(ctx_bad), ghtml.err, "Saving IMPOSSIBLE!")?;
 						} else {
 							return Ok(println!("{}", ctx_good));
@@ -210,6 +210,18 @@ impl ApplyToTemplate for LineResult {
 
 impl LineResult {
 	fn new(line: StringGaslitAboutItsLength, index: usize) -> Self {
+		let (text, length) = line.unwrap();
+
+		// HTML PART
+		let mut prefix = format!("\n            <br><p class=\"{{DEFAULT_CLASS}}\">&nbsp;$&nbsp;</p><p class=\"{{DEFAULT_CLASS}} typing-animator-moving\">"); //TODO Allow custom indents.
+		if index == 1 {
+			prefix = prefix.replace("<br>", "");
+		} else {
+			prefix = prefix.replace("&nbsp;$", "")
+		}
+		let html = format!("{}{}</p><p class=\"{{DEFAULT_CLASS}} typing-animator-moving typing-animator-blinking\">_</p>", prefix, text);
+
+		// CSS PART
 		todo!();
 	}
 }

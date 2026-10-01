@@ -33,6 +33,7 @@ pub struct Metadata<'metadata_fields> {
 	title: &'metadata_fields str,
 	header: &'metadata_fields str,
 	template: &'metadata_fields str,
+	defaultclass: &'metadata_fields str,
 	description: &'metadata_fields str,
 }
 
@@ -49,10 +50,11 @@ impl<'output> Metadata<'output> {
 			let (canonical, next_header_segment) = next_header_segment.split_once("\" title=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" title=\"” after the the canonical param, but got „{}” instead.", header))?;
 			let (title, next_header_segment) = next_header_segment.split_once("\" header=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" header=\"” after the the title param, but got „{}” instead.", header))?;
 			let (header, next_header_segment) = next_header_segment.split_once("\" template=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" template=\"” after the the header param, but got „{}” instead.", header))?;
-			let (template, next_header_segment) = next_header_segment.split_once("\" description=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" description=\"” after the the template param, but got „{}” instead.", header))?;
+			let (template, next_header_segment) = next_header_segment.split_once("\" defaultclass=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" defaultclass=\"” after the the template param, but got „{}” instead.", header))?;
+			let (defaultclass, next_header_segment) = next_header_segment.split_once("\" description=\"").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to have a „\" description=\"” after the the defaultclass param, but got „{}” instead.", header))?;
 			let description = next_header_segment.strip_suffix("\">").with_context(|| format!("Invalid G-HTML structure: Invalid header: Expected the 2nd line to end with a „\">” after the the description param, but got „.....{}” instead.", next_header_segment))?;
 	
-			return Ok((Metadata{lang, canonical, title, header, template, description}, content.join("\n")));
+			return Ok((Metadata{lang, canonical, title, header, template, defaultclass, description}, content.join("\n")));
 		} else {
 			bail!("Not enough lines provided! Got {}, but expected at least 4.", lines.len());
 		}
@@ -67,10 +69,11 @@ impl ApplyToTemplate for Metadata<'_> {
 	fn apply_to_template(&self, template: &String) -> String {
 		return template
 		.replace("{{PAGE_LANG}}", self.lang)
-		.replace("{{PAGE_DESCRIPTION}}", self.description)
-		.replace("{{PAGE_TITLE}}", self.title)
 		.replace("{{CANONICAL_URL}}", self.canonical)
-		.replace("{{PAGE_HEADER}}", self.header);
+		.replace("{{PAGE_TITLE}}", self.title)
+		.replace("{{PAGE_HEADER}}", self.header)
+		.replace("{{DEFAULT_CLASS}}", self.defaultclass)
+		.replace("{{PAGE_DESCRIPTION}}", self.description)
 	}
 }
 
@@ -223,6 +226,11 @@ impl From<WordSection> for VecDeque<WordSection> {
 	}
 }
 
+impl StringGaslitAboutItsLength{
+	pub fn unwrap(self) -> (String, usize) {
+		return (self.content, self.length);
+	}
+}
 
 impl WordSection {
 	fn new(previous: Self, chr: char) -> Result<VecDeque<Self>> {
