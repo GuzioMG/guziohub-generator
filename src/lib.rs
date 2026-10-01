@@ -6,7 +6,9 @@ use crate::WordSection::SeparatorOrNoPrevious;
 
 
 
-pub fn process(filecontent: &String) -> Result<(Metadata<'_>, VecDeque<Renderable>)> {
+pub fn process<'input, 'output>(filecontent: &'input String) -> Result<(Metadata<'output>, VecDeque<Renderable>)>
+	where 'input: 'output
+{
 	let (meta, text) = Metadata::new(filecontent.lines().collect::<Vec<&str>>().as_slice())?;
 	let mut walker = Walker::new(text);
 
@@ -22,7 +24,7 @@ pub fn process(filecontent: &String) -> Result<(Metadata<'_>, VecDeque<Renderabl
 
 
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Metadata<'metadata_fields> {
 	lang: &'metadata_fields str,
 	canonical: &'metadata_fields str,
@@ -31,7 +33,6 @@ pub struct Metadata<'metadata_fields> {
 	template: &'metadata_fields str,
 	description: &'metadata_fields str,
 }
-
 
 impl<'output> Metadata<'output> {
 	fn new<'inputs>(lines: &[&'inputs str]) -> Result<(Self, String)>
@@ -53,6 +54,19 @@ impl<'output> Metadata<'output> {
 		} else {
 			bail!("Not enough lines provided! Got {}, but expected at least 4.", lines.len());
 		}
+	}
+
+	pub fn get_template(&self) -> &'output str {
+		return self.template;
+	}
+
+	pub fn apply_to_template(&self, template: String) -> String {
+		return template
+			.replace("{{PAGE_LANG}}", self.lang)
+			.replace("{{PAGE_DESCRIPTION}}", self.description)
+			.replace("{{PAGE_TITLE}}", self.title)
+			.replace("{{CANONICAL_URL}}", self.canonical)
+			.replace("{{PAGE_HEADER}}", self.header);
 	}
 }
 
@@ -313,7 +327,7 @@ impl Walker {
 
 		//Main logic
 		if self.active_line.length == 0 && self.word.is_empty(){
-			dbg!(format!("At char „{}” (#{} in „{})”, we're at a beginning of a new line.", current, self.index, self.on));
+			//dbg!(format!("At char „{}” (#{} in „{})”, we're at a beginning of a new line.", current, self.index, self.on));
 
 			//State sanity-check and reset
 			ensure!(self.active_tags.is_empty(), "Tried to start a new line (at char {}, #{} in „{}”), but some tags remained unclosed on the previous line!.", current, self.index, self.on);
@@ -324,11 +338,11 @@ impl Walker {
 
 			//Line init strategies
 			if *current == '\n' {
-				dbg!(format!("It seems to be empty!"));
+				//dbg!(format!("It seems to be empty!"));
 				self.past_lines.push_back(Renderable { length: 0, content: "".to_string() });
 			}
 			else if indent_chars.contains(current) {
-				dbg!(format!("New line begins with an indent in form of a {}.", current));
+				//dbg!(format!("New line begins with an indent in form of a {}.", current));
 				self.append_indent_char(*current).with_context(|| format!("Indent append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 			}
 			else {
@@ -336,13 +350,13 @@ impl Walker {
 				self.indent_completion = true;
 			}
 		} else {
-			dbg!(format!("At char „{}” (#{} in „{})”, we're continuing a line.", current, self.index, self.on));
+			//dbg!(format!("At char „{}” (#{} in „{})”, we're continuing a line.", current, self.index, self.on));
 			if !self.indent_completion && indent_chars.contains(current) {
-				dbg!(format!("Which means we're continuing an indent, in form of a {}.", current));
+				//dbg!(format!("Which means we're continuing an indent, in form of a {}.", current));
 				self.append_indent_char(*current).with_context(|| format!("Indent append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 			}
 			else if *current == '\n' {
-				dbg!(format!("...Nevermind, we're ending it."));
+				//dbg!(format!("...Nevermind, we're ending it."));
 				let ctx = format!("Tried to complete a line after char „{}” (#{} in „{}”), but it failed:", current, self.index, self.on);
 				self = self.end_word().with_context(||ctx)?;
 				self.past_lines.push_back(self.active_line);
@@ -353,7 +367,7 @@ impl Walker {
 				let mut vec = WordSection::from_char(self.word.pop_back().unwrap_or(SeparatorOrNoPrevious), *current).with_context(|| format!("WordSection append error at char „{}” (#{} in „{})”:", current, self.index, self.on))?;
 				match vec.pop_front() {
 					Some(SeparatorOrNoPrevious) => {
-						dbg!(format!("At char „{}” (#{} in „{})”, we're completing a word.", current, self.index, self.on));
+						//dbg!(format!("At char „{}” (#{} in „{})”, we're completing a word.", current, self.index, self.on));
 						let ctx = format!("Tried to complete a word after char „{}” (#{} in „{}”), but it failed:", current, self.index, self.on);
 						self = self.end_word().with_context(||ctx)?;
 					}
@@ -364,7 +378,7 @@ impl Walker {
 				}
 				match vec.pop_front() {
 					Some(SeparatorOrNoPrevious) => {
-						dbg!(format!("At char „{}” (#{} in „{})”, we're completing a word.", current, self.index, self.on));
+						//dbg!(format!("At char „{}” (#{} in „{})”, we're completing a word.", current, self.index, self.on));
 						let ctx = format!("Tried to complete a word after char „{}” (#{} in „{}”), but it failed:", current, self.index, self.on);
 						self = self.end_word().with_context(||ctx)?;
 					},

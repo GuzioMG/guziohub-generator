@@ -1,17 +1,9 @@
-use std::{env::args_os, fs};
+use std::{collections::HashMap, env::args_os, fs, io, path::{Path, PathBuf}};
 use guziohub_generator::*;
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Error, Result, bail};
 use walkdir::WalkDir;
 
 fn main() -> Result<()>{
-	let path = "test.g.html";
-	let file = fs::read_to_string(path).with_context(|| format!("Couldn't read file from {}!", path))?;
-	let (meta, lines) = process(&file)?;
-	dbg!(meta);
-	for line in lines {
-		dbg!(line);
-	}
-
 	let args: Vec<_> = args_os().collect();
 	if let [_cmd, flags@.., src, dest] = args.as_slice() {
 		match flags {
@@ -70,9 +62,117 @@ fn arg_fail(count: usize) -> Result<()> {
 }
 
 fn walk_in(src: String, dest: String, test_mode: bool) -> Result<()> {
-	for found in WalkDir::new(src).follow_links(true).same_file_system(false) {
-		dbg!(found?.path());
+	println!("[1/3] -- READING SRC TREE");
+	let mut templates: HashMap<String, io::Result<String>> = HashMap::new();
+	let mut assets: HashMap<String, Asset> = HashMap::new();
+	let mut sources: Vec<SourcePaths> = Vec::new();
+	for found in WalkDir::new(&src).follow_links(true).same_file_system(false) {
+		let file = found.with_context(||"File walking error:")?;
+		let name = file.file_name().to_string_lossy().to_string();
+		let path_raw = file.path();
+		match path_raw.to_str() {
+			None => bail!("File walking error: Path „{}” contains non-UTF-8 sequences.", path_raw.to_string_lossy()),
+			Some(path) => {
+				print!("Found {} - it's a", path);
+
+				if name.ends_with(".g.html") {
+					println!(" G-HTML file.");
+					match path.strip_suffix(".g.html") {
+						Some(stripped) => {
+							let stripped = stripped.replacen(src.as_str(), &dest, 1);
+							let mut ok = stripped.clone();
+							let mut err = stripped.clone();
+							ok.push_str(".html");
+							err.push_str(".autopsy.txt");
+							sources.push(SourcePaths { src: path_raw.to_path_buf(), ok, err });
+						}
+						None => bail!("Evil FS shenanigans seem to be going on - the file NAME ended with .g.html, but the file PATH did not. Refusing to operate in this unstable environment."),
+					}
+				}
+
+				else if name.starts_with("template_") && name.ends_with(".html") {
+					println!(" template.");
+					// SAFETY: We just checked that the name starts and ends with template_ and .html
+					let name = unsafe{name.strip_circumfix("template_", ".html").unwrap_unchecked()};
+					if let Some(_) = templates.insert(name.to_string(), fs::read_to_string(path_raw)) {
+						bail!("Template processing error: Found multiple templates called „{}”.", name);
+					}
+				}
+
+				else {
+					println!("n asset.");
+					let asset_src;
+					if file.file_type().is_dir() {
+						asset_src = Asset::Directory;
+					} else if file.path_is_symlink() && file.file_type().is_file() {
+						asset_src = Asset::Copied(fs::read_link(path_raw).with_context(||format!("File walking error: Couldn't unwrap symlink „{}” to a real path:", path))?.as_path().to_path_buf());
+					} else if file.file_type().is_file() {
+						asset_src = Asset::Copied(path_raw.to_path_buf());
+					} else {
+						bail!("Asset processing error: „{}” is an unsupported asset type (eg. block device / socket).", path);
+					}
+					
+					let placement = path.replacen(src.as_str(), &dest, 1);
+					let ctx = format!("Asset processing error: Multiple assets tried to position themselves at „{}”.", placement);
+					if let Some(_) = assets.insert(placement, asset_src) {
+						bail!(ctx);
+					}
+				}
+			}
+		}
+	}
+
+	println!("[2/3] -- APPLYING TEMPLATES");
+	let mut step: usize = 0;
+	let steps = sources.len();
+	for ghtml in sources {
+		step+=1;
+		print!("Processing {}/{} G-HTML files - {}  ->  ", step, steps, ghtml.src.as_os_str().to_string_lossy().to_string());
+		let file = fs::read_to_string(ghtml.src).with_context(||"Couldn't even get to it due to an IO error:")?;
+		match process(&file) {
+			Ok((meta, lines)) => {
+				print!("Syntax OK!; ");
+				match templates.get(meta.get_template()) {
+					Some(Ok(template)) => {
+						let applied = meta.apply_to_template(template.clone());
+						dbg!(applied);
+						dbg!(lines);
+						todo!("Continue work from here.");
+					},
+					Some(Err(err)) => bail!("Template processing error: Template „{}” exists, but can't be loaded due to an IO error: {}", meta.get_template(), err),
+					None => save_autopsy(&mut assets, Error::msg(format!("templates.get({}) returned nothing", meta.get_template())), ghtml.err, "Template not found")?,
+				}
+			},
+			Err(err) => {
+				save_autopsy(&mut assets, err, ghtml.err, "Syntax ERR!")?;
+			}
+		}
 	}
 
 	return Ok(());
+}
+
+fn save_autopsy(assets: &mut HashMap<String, Asset>, err: Error, path: String, msg: &str) -> Result<()>{
+	print!("{}, will save an autopsy; ", msg);
+	let ctx_good = format!("Autopsy will be saved at: {}", path);
+	let ctx_bad = format!("Autopsy path ({}) already occupied by an asset!", path);
+	if let Some(_) = assets.insert(path, Asset::Literal(err.to_string())) {
+		bail!(ctx_bad);
+	} else {
+		return Ok(println!("{}", ctx_good));
+	}
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Asset {
+	#[default] Directory,
+	Copied(PathBuf),
+	Literal(String),
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SourcePaths {
+	src: PathBuf,
+	ok: String,
+	err: String
 }
