@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::HashMap, env::args_os, fs, io, ops::AddAssign, path::PathBuf};
+use std::{cmp::max, collections::HashMap, env::args_os, fs, io::{self, Write, stdout}, ops::AddAssign, path::PathBuf};
 use guziohub_generator::*;
 use anyhow::{Context, Error, Result, bail, ensure};
 use walkdir::WalkDir;
@@ -12,7 +12,8 @@ fn main() -> Result<()>{
 				match single.to_string_lossy().to_string().as_str() {
 					"help"|"--help"|"-h" =>{
 						print_usage();
-						return Ok(print!("   (oh, btw, you don't need to pass extra args when calling -h or --help."))
+						print!("   (oh, btw, you don't need to pass extra args when calling -h or --help.");
+						return Ok(stdout().flush()?);
 					}
 					"--test-mode" => walk_in(src.to_string_lossy().to_string(), dest.to_string_lossy().to_string(), true)?,
 					flag => {
@@ -55,6 +56,7 @@ fn print_usage() {
 	println!("ARG: dst  ->  The destination folder. Files may be overwritten (if they differ from processed src) or even removed (if not found in src)!");
 	println!("FLAG: --test-mode  ->  Will not change anything in dst, instead checking whether its contents differ in any way from processed src.");
 	print!("FLAG: -h | --help  ->  You're reading it, dummy :)");
+	let _ = stdout().flush();
 }
 
 fn arg_fail(count: usize) -> Result<()> {
@@ -74,6 +76,7 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 			None => bail!("File walking error: Path „{}” contains non-UTF-8 sequences.", path_raw.to_string_lossy()),
 			Some(path) => {
 				print!("Found {} - it's a", path);
+				let _ = stdout().flush();
 
 				if name.ends_with(".g.html") {
 					println!(" G-HTML file.");
@@ -129,13 +132,16 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 	for ghtml in sources {
 		index+=1;
 		print!("Processing {}/{} G-HTML files - {}  ->  ", index, max_index, ghtml.src.as_os_str().to_string_lossy().to_string());
+		let _ = stdout().flush();
 		let file = fs::read_to_string(ghtml.src).with_context(||"Couldn't even get to it due to an IO error:")?;
 		match process(&file) {
 			Ok((meta, lines)) => {
 				print!("Syntax OK!; ");
+				let _ = stdout().flush();
 				match templates.get(meta.get_template()) {
 					Some(Ok(template)) => {
 						print!("Template FOUND!; ");
+						let _ = stdout().flush();
 						let mut index: usize = 0;
 						let max_index: usize = lines.len();
 						let mut processed_lines = LineResult::default();
@@ -182,6 +188,7 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 					match asset {
 						Some(Asset::Directory) | None => {
 							print!("{} isn't meant to be a file - removing it... ", path);
+							let _ = stdout().flush();
 							ensure!(!test_mode, "Running in test-mode! No removal allowed.");
 							fs::remove_file(path)?;
 							if asset.is_some() {
@@ -225,6 +232,7 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 	for (path, asset) in assets {
 		index+=1;
 		print!("Creating {}/{} assets - {}  ->  ", index, max_index, path);
+		let _ = stdout().flush();
 		ensure!(!test_mode, "Running in test-mode! No creation allowed.");
 		match asset {
 			Asset::Directory => {
@@ -247,6 +255,7 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 
 fn save_autopsy(assets: &mut HashMap<String, Asset>, err: Error, path: String, msg: &str) -> Result<()>{
 	print!("{}, will save an autopsy; ", msg);
+	let _ = stdout().flush();
 	let ctx_good = format!("Autopsy will be saved at: {}", path);
 	let ctx_bad = format!("Autopsy path ({}) already occupied by an asset!", path);
 	if let Some(_) = assets.insert(path, Asset::Literal(err.to_string())) {
