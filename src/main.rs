@@ -239,10 +239,9 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 				println!("Creating dir(s)...",);
 				fs::create_dir_all(path)?;
 			},
-			Asset::Copied(to) =>  {
+			Asset::Copied(src) =>  {
 				println!("Coping a static asset...",);
-				fs::write(&path, "I have to write a placeholder value, otherwise Linux gets very unhappy when I call copy() on it. Even though Rust is trying to convince me that it's fine and I'm not gonna get a \"errno: not found\" as long as the parent dir exists.")?;
-				fs::copy(path, to)?;
+				fs::copy(src, path)?;
 			},
 			Asset::Literal(contents) =>  {
 				println!("Writing a G-HTML result...",);
