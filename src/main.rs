@@ -237,15 +237,41 @@ fn walk_in(src: String, dst: String, test_mode: bool) -> Result<()> {
 		match asset {
 			Asset::Directory => {
 				println!("Creating dir(s)...",);
-				fs::create_dir_all(path)?;
+				fs::create_dir_all(&path)?;
 			},
-			Asset::Copied(src) =>  {
+			Asset::Copied(from) =>  {
 				println!("Coping a static asset...",);
-				fs::copy(src, path)?;
+				match fs::copy(&from, &path) {
+					Ok(ok) => Result::Ok(ok),
+					Err(err) => {
+						match err.kind() {
+							io::ErrorKind::NotFound => {
+								println!("Your OS returned a not-found error. This usually implies that a folder inside of which this file should reside doesn't exist. It shouldn't be happening because the loop that creates the missing assets runs in the same order in which assets are located, which itself searches directories first, so the code that creates the directory should run before the code that creates the file. Nevertheless, in the real word, I've observed that this loop's order can seemingly be random (I'm yet to figure out why). As such, a backup procedure exists to create the missing folder. Triggering it now...");
+								fs::create_dir_all(&path)?;
+								fs::remove_dir(&path)?;
+								fs::copy(&from, &path)
+							}
+							_ => Result::Err(err),
+						}
+					},
+				}?;
 			},
 			Asset::Literal(contents) =>  {
 				println!("Writing a G-HTML result...",);
-				fs::write(path, contents)?;
+				match fs::write(&path, &contents) {
+					Ok(ok) => Result::Ok(ok),
+					Err(err) => {
+						match err.kind() {
+							io::ErrorKind::NotFound => {
+								println!("Your OS returned a not-found error. This usually implies that a folder inside of which this file should reside doesn't exist. It shouldn't be happening because the loop that creates the missing assets runs in the same order in which assets are located, which itself searches directories first, so the code that creates the directory should run before the code that creates the file. Nevertheless, in the real word, I've observed that this loop's order can seemingly be random (I'm yet to figure out why). As such, a backup procedure exists to create the missing folder. Triggering it now...");
+								fs::create_dir_all(&path)?;
+								fs::remove_dir(&path)?;
+								fs::write(&path, &contents)
+							}
+							_ => Result::Err(err),
+						}
+					},
+				}?;
 			},
 		}
 	}
